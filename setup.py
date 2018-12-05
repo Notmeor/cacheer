@@ -10,3 +10,4 @@ setup(
     author_email='kevin.inova@gmail.com',
     description='',
     install_requires=[]
+)
