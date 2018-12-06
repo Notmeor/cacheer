@@ -3,15 +3,7 @@
 import os
 import lmdb
 
-from pandas.io.pickle import pkl
-
-
-def serialize(obj):
-    return pkl.dumps(obj, pkl.HIGHEST_PROTOCOL)
-
-
-def deserialize(b):
-    return pkl.loads(b)
+from cacheer.utils import serialize, deserialize
 
 
 class LmdbStore:
@@ -45,3 +37,33 @@ class LmdbStore:
 
     def close(self):
         self._env.close()
+
+
+class MetaDB:
+    """
+    Collects update stats of all lab databases
+    """
+
+    def get_latest_token(self, block_id):
+        raise NotImplementedError
+
+    def update(self, block_id, meta):
+        raise NotImplementedError
+
+
+class LmdbMetaDB(MetaDB):
+
+    def __init__(self):
+        self._prefix = '__meta_'
+        self._store = LmdbStore()
+
+    def get_latest_token(self, block_id):
+        key = self._prefix + block_id
+        meta = self._store.read(key)
+        if meta:
+            token = meta['dt']
+            return token
+
+    def update(self, block_id, meta):
+        key = self._prefix + block_id
+        self._store.write(key, meta)
