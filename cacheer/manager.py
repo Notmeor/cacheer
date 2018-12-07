@@ -10,7 +10,7 @@ import pymongo
 
 import logging
 
-from cacheer.store import LmdbStore as Store, LmdbMetaDB as MetaDB
+from cacheer.store import LmdbStore as Store, MongoMetaDB as MetaDB
 from cacheer.utils import conf, gen_md5, setup_logging, logit
 
 
@@ -20,10 +20,12 @@ LOG = logging.getLogger(__file__)
 
 def gen_cache_key(func, *args, **kw):
     signature = inspect.signature(func)
+    print('args: {}, kw: {}'.format(args, kw))
     bound_arg = signature.bind(*args, **kw)
     bound_arg.apply_defaults()
     arg = bound_arg.arguments
     key = hashlib.md5(pkl.dumps(arg, pkl.HIGHEST_PROTOCOL)).hexdigest()
+    print('hashed: {}'.format(key))
     return key
 
 
@@ -58,25 +60,47 @@ class CacheStore:
 
 class CacheManager:
 
-    def __init__(self, cache_store, cache_monitor):
+    def __init__(self, cache_store, metadb):
         self._cache_store = cache_store
-        self._cache_monitor = cache_monitor
+        self._metadb = metadb
 
-    def add(self, key, cache):
-        self._cache_store.write(key, cache)
+        self._token_prefix = '__token_'
 
-    def read(self, key):
-        cache = self._cache_store.read(key)
-        return cache
+    def register_api(self, api_name, block_id):
+        self._metadb.add_api(api_name, block_id)
 
-    def delete(self, key):
-        pass
+    def write_cache(self, key, cache):
+        key_ = self._token_prefix + key
+        self._cache_store.write(key_, cache.header)
+        self._cache_store.write(key, cache.body)
+
+    def read_cache_token(self, key):
+        key_ = self._token_prefix + key
+        return self._cache_store.read(key_)
+
+    def read_cache_value(self, key):
+        return self._cache_store.read(key)
+
+    def update_cache_token(self, key, token):
+        key_ = self._token_prefix + key
+        self._cache_store.write(key_, token)
+
+    def delete_cache(self, key):
+        key_ = self._token_prefix + key
+        self._cache_store.delete(key_)
+        self._cache_store.delete(key)
 
     def _parse_key_as_params(self, key):
         """
         cache naming
             {class_name}_{class_signature}_{method_name}_{arguments}
         """
+
+    def get_latest_token(self, block_id):
+        return self._metadb.get_latest_token(block_id)
+
+    def get_block_id(self, api_name):
+        return self._metadb.get_block_id(api_name)
 
     def compare_equal(self, el1, el2):
         return gen_md5(el1) == gen_md5(el2)
@@ -86,86 +110,55 @@ class CacheManager:
         def wrapper(*args, **kw):
             api_name = func.__qualname__
             key = gen_cache_key(func, *args, **kw)
-            cache = self.read(key)
-            # cache_ts, value = cache.header, cache.body
 
-            block_id = api_map[api_name]
-            latest_token = self._cache_monitor.get_latest_token(block_id)
+            block_id = self.get_block_id(api_name)
+            latest_token = self.get_latest_token(block_id)
+            token = self.read_cache_token(key)
 
+            # case 0: api not registered, hence cannot retrive latest token
             if latest_token is None:
+                LOG.info('{}: unregistered'.format(api_name))
                 return func(*args, **kw)
-                LOG.info('meta of {} not found, '
-                         'cache disabled'.format(block_id))
 
-            if cache is not None:
-                LOG.info('cache loaded: {}'.format(cache.header))
-                if latest_token != cache.header:
-                    LOG.info('cache validated: {}'.format(cache.header))
-                    return cache.body
+            # case 1: cache not found
+            if token is None:
+                new_value = func(*args, **kw)
+                cache = Cache()
+                cache.header = latest_token
+                cache.body = new_value
+                self.write_cache(key, cache)
+                LOG.info('{}: cache not found, return new value '
+                         'and write cache'.format(api_name))
+                return new_value
 
-            new_value = func(*args, **kw)
+            # case 2: token outdated
+            if token != latest_token:
 
-            if cache is not None:
-                if self.compare_equal(cache.body, new_value):
-                    LOG.info('compared equal: {}'.format(cache.header))
-                    return cache.body
+                cache_value = self.read_cache_value(key)
+                new_value = func(*args, **kw)
 
-            self.add(key, Cache(latest_token, new_value))
-            LOG.info('cache overwritten: {}'.format(latest_token))
-            return new_value
+                # case 2.1: value unchanged, only update token
+                if self.compare_equal(cache_value, new_value):
+                    self.update_cache_token(key, latest_token)
+                    LOG.info('{}: value unchanged, '
+                             'only update token'.format(api_name))
+                    return new_value
+
+                # case 2.2: value changed, update cache
+                else:
+                    cache = Cache()
+                    cache.header = latest_token
+                    cache.body = new_value
+                    self.write_cache(key, cache)
+                    LOG.info('{}: cache overwritten'.format(api_name))
+                    return new_value
+
+            # case 3: token validated
+            if token == latest_token:
+                LOG.info('{}: cache hit'.format(api_name))
+                return self.read_cache_value(key)
+
         return wrapper
 
 
-api_map = {
-    'TestPortal.get_quote': 'main-db:test_cacheer.quote',
-    'TestPortal.get_stock_day_forward': 'stock_quote.day_new_forward'
-}
-
-
-class CacheMonitor:
-
-    def __init__(self):
-        self._metadb = MetaDB()
-
-    def get_latest_token(self, block_id):
-        return self._metadb.get_latest_token(block_id)
-
-    def validate(self, api_name, token):
-        block_id = api_map[api_name]
-        if token != self.get_latest_token(block_id):
-            return True
-        return False
-
-
-#class CacheMonitor:
-#
-#    def __init__(self):
-#        self._stat_coll = None
-#        self._update_status = {}
-#        self._init_meta_db()
-#
-#    def _init_meta_db(self):
-#        """
-#        block_id takes the form of 'database-alias:table-namespace[;block_id]'
-#        """
-#        self._stat_coll = pymongo.MongoClient(
-#            conf['mongo_uri'])['__update_history']['status']
-#        self.refresh_datasource_stat()
-#
-#    @logit(LOG.info, after='refreshed_datasource_stat')
-#    def refresh_datasource_stat(self):
-#        docs = list(self._stat_coll.find())
-#        self._update_status = {doc['block_id']: doc for doc in docs}
-#
-#    def get_last_ts(self, ns):
-#        self.refresh_datasource_stat()
-#        return self._update_status[ns]['dt']
-#
-#    def validate(self, api_name, cache_ts):
-#        ns = api_map[api_name]
-#        if cache_ts > self.get_last_ts(ns):
-#            return True
-#        return False
-
-
-cache_manager = CacheManager(CacheStore(), CacheMonitor())
+cache_manager = CacheManager(CacheStore(), MetaDB())

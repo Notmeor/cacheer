@@ -71,6 +71,13 @@ def setup_logging(default_path=None,
         logging.basicConfig(level=default_level)
 
 
-conf = {
-    'mongo_uri': '192.168.211.169:27017'
-}
+def load_config(path=None):
+    if path is None:
+        dirname = os.path.dirname(__file__)
+        path = os.path.join(dirname, 'config.yaml')
+    with open(path, 'r') as f:
+        conf = yaml.load(f)
+    return conf
+
+
+conf = load_config()
