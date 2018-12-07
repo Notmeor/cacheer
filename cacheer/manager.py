@@ -2,6 +2,7 @@
 
 import inspect
 import functools
+import collections
 
 from pandas.io.pickle import pkl
 import hashlib
@@ -19,11 +20,43 @@ LOG = logging.getLogger(__file__)
 
 
 def gen_cache_key(func, *args, **kw):
+
+    # func has yet to get its __self__ attr
+    def _is_bound_method(fn):
+        qualname = fn.__qualname__
+        if '.' not in qualname:
+            return False
+        else:
+            cls_name = qualname.split('.')[0]
+
+        if not args:
+            return False
+
+        # check whether staticmethod
+        is_staticmethod = False
+
+        if isinstance(args[0], type):
+            if args[0].__name__ != cls_name:
+                is_staticmethod = True
+        elif type(args[0]).__name__ != cls_name:
+            is_staticmethod = True
+
+        if is_staticmethod:
+            return False
+
+        return True
+
     signature = inspect.signature(func)
-    print('args: {}, kw: {}'.format(args, kw))
+
     bound_arg = signature.bind(*args, **kw)
     bound_arg.apply_defaults()
     arg = bound_arg.arguments
+
+    if _is_bound_method(func):  # pop first argument
+        print('Bound')
+        arg = collections.OrderedDict(list(arg.items())[1:])
+
+    print('arg:', arg)
     key = hashlib.md5(pkl.dumps(arg, pkl.HIGHEST_PROTOCOL)).hexdigest()
     print('hashed: {}'.format(key))
     return key
