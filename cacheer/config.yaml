@@ -11,6 +11,11 @@ blacklist: []
 # metadb
 metadb-uri: 
 
+# lmdb store
+lmdb-uri: '/Users/eisenheim/work/share/cache/lmdb'
+
+map-size: 107374182400
+
 
 logging:
     version: 1

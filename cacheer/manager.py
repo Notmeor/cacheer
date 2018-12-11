@@ -106,9 +106,13 @@ class CacheManager:
         self._metadb.add_api(api_name, block_id)
 
     def write_cache(self, key, cache):
-        key_ = self._token_prefix + key
-        self._cache_store.write(key_, cache.header)
-        self._cache_store.write(key, cache.body)
+        try:
+            key_ = self._token_prefix + key
+            self._cache_store.write(key_, cache.header)
+            self._cache_store.write(key, cache.body)
+        except:
+            self._cache_store.delete(key_)
+            raise
 
     def read_cache_token(self, key):
         key_ = self._token_prefix + key
@@ -208,4 +212,4 @@ class CacheManager:
         return _cache
 
 
-cache_manager = CacheManager(CacheStore(), MetaDB())
+cache_manager = CacheManager(Store(), MetaDB())

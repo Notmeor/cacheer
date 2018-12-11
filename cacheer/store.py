@@ -6,7 +6,7 @@ import pymongo
 
 import logging
 
-from cacheer.utils import serialize, deserialize, conf
+from cacheer.utils import serialize, deserialize, conf, timeit
 
 LOG = logging.getLogger(__file__)
 
@@ -14,11 +14,16 @@ LOG = logging.getLogger(__file__)
 class LmdbStore:
 
     def __init__(self):
-        try:
-            db_path = os.path.join(os.path.dirname(__file__), 'lmdb')
-        except NameError:  # so it would work in python shell
-            db_path = os.path.join(os.path.realpath(''), 'lmdb')
-        self._env = lmdb.open(db_path, map_size=1024 * 1024 * 10)
+
+        db_path = conf['lmdb-uri']
+        if not db_path:
+            try:
+                db_path = os.path.join(os.path.dirname(__file__), 'lmdb')
+            except NameError:  # so it would work in python shell
+                db_path = os.path.join(os.path.realpath(''), 'lmdb')
+
+        map_size = conf['map-size'] or 1024 * 1024 * 10
+        self._env = lmdb.open(db_path, map_size=map_size)
 
     def __enter__(self):
         pass
@@ -30,6 +35,7 @@ class LmdbStore:
         with self._env.begin(write=True) as txn:
             txn.put(key.encode(), serialize(value))
 
+    @timeit
     def read(self, key):
         with self._env.begin() as txn:
             value = txn.get(key.encode())

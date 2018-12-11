@@ -10,15 +10,9 @@ import functools
 
 import hashlib
 
+import pandas as pd
 from pandas.io.pickle import pkl
-
-
-def serialize(obj):
-    return pkl.dumps(obj, pkl.HIGHEST_PROTOCOL)
-
-
-def deserialize(b):
-    return pkl.loads(b)
+from pandas.io import packers
 
 
 def timeit(func):
@@ -30,6 +24,33 @@ def timeit(func):
             func.__name__, time.time() - t0_))
         return ret
     return wrapper
+
+
+@timeit
+def serialize(obj):
+    return pkl.dumps(obj, pkl.HIGHEST_PROTOCOL)
+
+
+@timeit
+def deserialize(b):
+    return pkl.loads(b)
+
+
+@timeit
+def serialize_exp(obj):
+    if isinstance(obj, pd.DataFrame):
+        if obj.memory_usage(deep=True).sum() > 1000000:
+            print('msgpack')
+            return packers.to_msgpack(None, obj)
+    return serialize(obj)
+
+
+@timeit
+def deserialize_exp(b):
+    try:
+        return deserialize(b)
+    except:
+        return packers.read_msgpack(b)
 
 
 def logit(log, before=None, after=None):
@@ -46,6 +67,7 @@ def logit(log, before=None, after=None):
     return decorator
 
 
+@timeit
 def gen_md5(b):
     return hashlib.md5(serialize(b)).hexdigest()
 
