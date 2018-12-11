@@ -33,6 +33,7 @@ def gen_cache_key(func, *args, **kw):
             return False
 
         # check whether staticmethod
+        # by qualname and first argument
         is_staticmethod = False
 
         if isinstance(args[0], type):
@@ -55,6 +56,8 @@ def gen_cache_key(func, *args, **kw):
     if _is_bound_method(func):  # pop first argument
         print('Bound')
         arg = collections.OrderedDict(list(arg.items())[1:])
+
+    arg.update({'__api_meta': func._api_meta})
 
     print('arg:', arg)
     key = hashlib.md5(pkl.dumps(arg, pkl.HIGHEST_PROTOCOL)).hexdigest()
@@ -119,6 +122,7 @@ class CacheManager:
         self._cache_store.write(key_, token)
 
     def delete_cache(self, key):
+
         key_ = self._token_prefix + key
         self._cache_store.delete(key_)
         self._cache_store.delete(key)
@@ -138,60 +142,70 @@ class CacheManager:
     def compare_equal(self, el1, el2):
         return gen_md5(el1) == gen_md5(el2)
 
-    def cache(self, func):
-        @functools.wraps(func)
-        def wrapper(*args, **kw):
+    def cache(self, src=None, api_meta={}):
+        def _cache(func):
+
             api_name = func.__qualname__
-            key = gen_cache_key(func, *args, **kw)
+            func._api_meta = {'api_name': api_name}
+            func._api_meta.update(api_meta)
 
-            block_id = self.get_block_id(api_name)
-            latest_token = self.get_latest_token(block_id)
-            token = self.read_cache_token(key)
+            if src is not None:
+                self.register_api(api_name, src)
 
-            # case 0: api not registered, hence cannot retrive latest token
-            if latest_token is None:
-                LOG.info('{}: unregistered'.format(api_name))
-                return func(*args, **kw)
+            @functools.wraps(func)
+            def wrapper(*args, **kw):
 
-            # case 1: cache not found
-            if token is None:
-                new_value = func(*args, **kw)
-                cache = Cache()
-                cache.header = latest_token
-                cache.body = new_value
-                self.write_cache(key, cache)
-                LOG.info('{}: cache not found, return new value '
-                         'and write cache'.format(api_name))
-                return new_value
+                key = gen_cache_key(func, *args, **kw)
 
-            # case 2: token outdated
-            if token != latest_token:
+                block_id = self.get_block_id(api_name)
+                latest_token = self.get_latest_token(block_id)
+                token = self.read_cache_token(key)
 
-                cache_value = self.read_cache_value(key)
-                new_value = func(*args, **kw)
+                # case 0: api not registered, hence cannot retrive latest token
+                if latest_token is None:
+                    LOG.info('{}: unregistered'.format(api_name))
+                    return func(*args, **kw)
 
-                # case 2.1: value unchanged, only update token
-                if self.compare_equal(cache_value, new_value):
-                    self.update_cache_token(key, latest_token)
-                    LOG.info('{}: value unchanged, '
-                             'only update token'.format(api_name))
-                    return new_value
-
-                # case 2.2: value changed, update cache
-                else:
+                # case 1: cache not found
+                if token is None:
+                    new_value = func(*args, **kw)
                     cache = Cache()
                     cache.header = latest_token
                     cache.body = new_value
                     self.write_cache(key, cache)
-                    LOG.info('{}: cache overwritten'.format(api_name))
+                    LOG.info('{}: cache not found, return new value '
+                             'and write cache'.format(api_name))
                     return new_value
 
-            # case 3: token validated
-            if token == latest_token:
-                LOG.info('{}: cache hit'.format(api_name))
-                return self.read_cache_value(key)
+                # case 2: token outdated
+                if token != latest_token:
 
-        return wrapper
+                    cache_value = self.read_cache_value(key)
+                    new_value = func(*args, **kw)
+
+                    # case 2.1: value unchanged, only update token
+                    if self.compare_equal(cache_value, new_value):
+                        self.update_cache_token(key, latest_token)
+                        LOG.info('{}: value unchanged, '
+                                 'only update token'.format(api_name))
+                        return new_value
+
+                    # case 2.2: value changed, update cache
+                    else:
+                        cache = Cache()
+                        cache.header = latest_token
+                        cache.body = new_value
+                        self.write_cache(key, cache)
+                        LOG.info('{}: cache overwritten'.format(api_name))
+                        return new_value
+
+                # case 3: token validated
+                if token == latest_token:
+                    LOG.info('{}: cache hit'.format(api_name))
+                    return self.read_cache_value(key)
+
+            return wrapper
+        return _cache
 
 
 cache_manager = CacheManager(CacheStore(), MetaDB())
