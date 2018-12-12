@@ -6,7 +6,7 @@ import pymongo
 
 import logging
 
-from cacheer.utils import serialize, deserialize, conf, timeit
+from cacheer.utils import serialize, deserialize, conf, timeit, gen_md5
 
 LOG = logging.getLogger(__file__)
 
@@ -32,8 +32,11 @@ class LmdbStore:
         pass
 
     def write(self, key, value):
+        b_value = serialize(value)
+        value_hash = gen_md5(b_value)
         with self._env.begin(write=True) as txn:
-            txn.put(key.encode(), serialize(value))
+            txn.put(key.encode(), b_value)
+        return value_hash
 
     @timeit
     def read(self, key):
@@ -48,6 +51,40 @@ class LmdbStore:
 
     def close(self):
         self._env.close()
+
+
+#class CacheMeta:
+#
+#    key = ''
+#    hash = ''
+#    token = ''
+#
+#
+#class CacheStore(LmdbStore):
+#
+#    def __init__(self):
+#        self._cache_meta_key = b'__cache_meta'
+#        # self._cache_meta_value = {}
+#
+#    def write(self, key, value):
+#        with self._env.begin(write=True) as txn:
+#
+#            meta_key = self._cache_meta_key
+#            res = txn.get(meta_key)
+#            if res is None:
+#                meta_value = []
+#            else:
+#                meta_value = deserialize(res)
+#
+#            b_value = serialize(value)
+#            b_value_hash = gen_md5(b_value)
+#
+#            meta_value.append({
+#                    })
+#
+#            txn.put(meta_key,
+#                    serialize(self._cache_meta_value))
+#            txn.put(key.encode(), serialize(value))
 
 
 class MetaDB:

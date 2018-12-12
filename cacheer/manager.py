@@ -12,7 +12,7 @@ import pymongo
 import logging
 
 from cacheer.store import LmdbStore as Store, MongoMetaDB as MetaDB
-from cacheer.utils import conf, gen_md5, setup_logging, logit
+from cacheer.utils import conf, gen_md5, setup_logging, logit, timeit
 
 
 setup_logging()
@@ -54,15 +54,13 @@ def gen_cache_key(func, *args, **kw):
     arg = bound_arg.arguments
 
     if _is_bound_method(func):  # pop first argument
-        print('Bound')
         arg = collections.OrderedDict(list(arg.items())[1:])
 
     arg.update({'__api_meta': func._api_meta})
 
-    print('arg:', arg)
     key = hashlib.md5(pkl.dumps(arg, pkl.HIGHEST_PROTOCOL)).hexdigest()
-    print('hashed: {}'.format(key))
-    return key
+
+    return key, arg
 
 
 class Cache:
@@ -97,38 +95,99 @@ class CacheStore:
 class CacheManager:
 
     def __init__(self, cache_store, metadb):
+        # TODO: implement CacheStore over LmdbStore
         self._cache_store = cache_store
         self._metadb = metadb
 
         self._token_prefix = '__token_'
+        self._cache_meta_key = '__cache_meta'
 
     def register_api(self, api_name, block_id):
         self._metadb.add_api(api_name, block_id)
 
     def write_cache(self, key, cache):
-        try:
-            key_ = self._token_prefix + key
-            self._cache_store.write(key_, cache.header)
+
+        cache_hash = self._cache_store.write(key, cache.body)
+
+        # write cache meta
+        cache_meta = self.read_cache_meta()
+
+        # if lmdb already has same value, only store `src_key`
+        has_value = False
+        src_key = ''
+        is_ref = False
+        for k, v in cache_meta.items():
+            if v['hash'] == cache_hash:
+                if not v['is_ref']:
+                    src_key = v['key']
+                    is_ref = True
+                    has_value = True
+                    break
+
+        if not has_value:
             self._cache_store.write(key, cache.body)
-        except:
-            self._cache_store.delete(key_)
-            raise
+        else:
+            LOG.warning('{}: same value exists, only write cache meta'.format(
+                key))
+
+        cache_meta[key] = {
+            'key': key,
+            'src_key': src_key,
+            'is_ref': is_ref,
+            'token': cache.header,
+            'hash': cache_hash
+        }
+        self._cache_store.write(self._cache_meta_key, cache_meta)
+
+    def read_cache_meta(self, key=None):
+        cache_meta = self._cache_store.read(self._cache_meta_key) or {}
+        if key is not None:
+            return cache_meta.get(key)
+        return cache_meta
 
     def read_cache_token(self, key):
-        key_ = self._token_prefix + key
-        return self._cache_store.read(key_)
+        meta = self.read_cache_meta(key)
+        if meta is None:
+            return None
+        return meta['token']
+
+    def read_cache_hash(self, key):
+        meta = self.read_cache_meta(key)
+        if meta is None:
+            return None
+        return meta['hash']
 
     def read_cache_value(self, key):
-        return self._cache_store.read(key)
+        meta = self.read_cache_meta(key)
+        key_ = meta['src_key'] if meta['is_ref'] else key
+        if meta['is_ref']:
+            LOG.warning('{}: is ref, would read by src_key'.format(key))
+        return self._cache_store.read(key_)
 
     def update_cache_token(self, key, token):
-        key_ = self._token_prefix + key
-        self._cache_store.write(key_, token)
+        cache_meta = self.read_cache_meta()
+        cache_meta[key]['token'] = token
+        self._cache_store.write(self._cache_meta_key, cache_meta)
 
     def delete_cache(self, key):
+        self._cache_store.delete(key)
+        cache_meta = self.read_cache_meta()
 
-        key_ = self._token_prefix + key
-        self._cache_store.delete(key_)
+        # check if current key is being referred
+        is_referred = False
+        for k, v in cache_meta.items():
+            if v['src_key'] == key:
+                is_referred = True
+                break
+
+        if is_referred:
+            LOG.info('{}: is currently being referred, would not remove it'
+                     .format(key))
+            return
+
+        cache_meta.pop(key)
+        self._cache_store.write(self._cache_meta_key, cache_meta)
+
         self._cache_store.delete(key)
 
     def _parse_key_as_params(self, key):
@@ -143,6 +202,7 @@ class CacheManager:
     def get_block_id(self, api_name):
         return self._metadb.get_block_id(api_name)
 
+    @timeit
     def compare_equal(self, el1, el2):
         return gen_md5(el1) == gen_md5(el2)
 
@@ -159,7 +219,8 @@ class CacheManager:
             @functools.wraps(func)
             def wrapper(*args, **kw):
 
-                key = gen_cache_key(func, *args, **kw)
+                key, api_arg = gen_cache_key(func, *args, **kw)
+                LOG.info('Request: {}, hash={}'.format(api_arg, key))
 
                 block_id = self.get_block_id(api_name)
                 latest_token = self.get_latest_token(block_id)
@@ -176,19 +237,22 @@ class CacheManager:
                     cache = Cache()
                     cache.header = latest_token
                     cache.body = new_value
-                    self.write_cache(key, cache)
                     LOG.info('{}: cache not found, return new value '
                              'and write cache'.format(api_name))
+                    self.write_cache(key, cache)
                     return new_value
 
                 # case 2: token outdated
                 if token != latest_token:
 
-                    cache_value = self.read_cache_value(key)
+                    # cache_value = self.read_cache_value(key)
+                    cache_hash = self.read_cache_hash(key)
                     new_value = func(*args, **kw)
+                    new_value_hash = gen_md5(new_value)
 
                     # case 2.1: value unchanged, only update token
-                    if self.compare_equal(cache_value, new_value):
+                    # if self.compare_equal(cache_value, new_value):
+                    if cache_hash == new_value_hash:
                         self.update_cache_token(key, latest_token)
                         LOG.info('{}: value unchanged, '
                                  'only update token'.format(api_name))

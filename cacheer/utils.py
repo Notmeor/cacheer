@@ -28,6 +28,8 @@ def timeit(func):
 
 @timeit
 def serialize(obj):
+    if isinstance(obj, bytes):
+        return obj
     return pkl.dumps(obj, pkl.HIGHEST_PROTOCOL)
 
 
@@ -69,7 +71,8 @@ def logit(log, before=None, after=None):
 
 @timeit
 def gen_md5(b):
-    return hashlib.md5(serialize(b)).hexdigest()
+    bytes_ = b if isinstance(b, bytes) else serialize(b)
+    return hashlib.md5(bytes_).hexdigest()
 
 
 def setup_logging(default_path=None,
@@ -88,6 +91,7 @@ def setup_logging(default_path=None,
     if os.path.exists(path):
         with open(path, 'rt') as f:
             config = yaml.safe_load(f.read())['logging']
+        config
         logging.config.dictConfig(config)
     else:
         logging.basicConfig(level=default_level)

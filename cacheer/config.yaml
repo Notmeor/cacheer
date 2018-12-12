@@ -37,8 +37,8 @@ logging:
             class: logging.handlers.RotatingFileHandler
             level: INFO
             formatter: debug
-            filename: info.log
-            maxBytes: 1048576 # 1MB
+            filename: /Users/eisenheim/work/share/cache/lab_cache_info.log
+            maxBytes: 10240 # 1MB
             backupCount: 20
             encoding: utf8
     
@@ -46,8 +46,8 @@ logging:
             class: logging.handlers.RotatingFileHandler
             level: ERROR
             formatter: simple
-            filename: errors.log
-            maxBytes: 1048576 # 1MB
+            filename: /Users/eisenheim/work/share/cache/lab_cache_info.log
+            maxBytes: 10240 # 1MB
             backupCount: 20
             encoding: utf8
     
