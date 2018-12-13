@@ -18,6 +18,8 @@ from cacheer.utils import conf, gen_md5, setup_logging, logit, timeit
 setup_logging()
 LOG = logging.getLogger(__file__)
 
+BASE_BLOCK_ID = '${api-fullname}'
+
 
 def gen_cache_key(func, *args, **kw):
 
@@ -64,32 +66,8 @@ def gen_cache_key(func, *args, **kw):
 
 
 class Cache:
-    def __init__(self, header=None, body=None):
-        self.header = header
-        self.body = body
-
-
-class CacheProvider:
-
-    def __init__(self, manager=None):
-        self._cache_manager = manager or self
-
-    def get(self, key):
-        if key not in self._cache_manager.get_all_keys():
-            self._cache_manager.add(key)
-        return self._cache_manager.load(key)
-
-
-class CacheStore:
-
-    def __init__(self):
-        self._store = Store()
-
-    def read(self, key):
-        return self._store.read(key)
-
-    def write(self, key, value):
-        self._store.write(key, value)
+    header = ''
+    body = ''
 
 
 class CacheManager:
@@ -206,15 +184,20 @@ class CacheManager:
     def compare_equal(self, el1, el2):
         return gen_md5(el1) == gen_md5(el2)
 
-    def cache(self, src=None, api_meta={}):
+    def cache(self, block_id=BASE_BLOCK_ID, api_meta={}):
         def _cache(func):
 
-            api_name = func.__qualname__
+            api_name = func.__module__ + '.' + func.__qualname__
             func._api_meta = {'api_name': api_name}
             func._api_meta.update(api_meta)
 
-            if src is not None:
-                self.register_api(api_name, src)
+            if block_id is not None:
+                block_id_ = block_id
+                if BASE_BLOCK_ID not in block_id:
+                    block_id_ = BASE_BLOCK_ID + ';' + block_id
+                block_id_ = block_id_.replace(BASE_BLOCK_ID, api_name)
+                print('block_id_:', block_id_)
+                self.register_api(api_name, block_id_)
 
             @functools.wraps(func)
             def wrapper(*args, **kw):
@@ -277,3 +260,7 @@ class CacheManager:
 
 
 cache_manager = CacheManager(Store(), MetaDB())
+
+@cache_manager.cache()
+def try_sth2(a, b, c=None):
+    return '{}+{}+{}'.format(a, b, c)

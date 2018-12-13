@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import os
+import datetime
+
+import functools
 import lmdb
 import pymongo
 
@@ -136,12 +139,20 @@ class MongoMetaDB(MetaDB):
 
     def get_latest_token(self, block_id):
 
-        meta = self._update_coll.find_one({
-            'block_id': block_id})
+        sub_block_ids = [i for i in block_id.split(';') if i != '']
 
-        if meta:
-            token = meta['dt']
-            return token
+        token = None
+
+        for sub_id in sub_block_ids:
+            meta = self._update_coll.find_one({
+                'block_id': sub_id})
+            if meta:
+                if token is None:
+                    token = meta['dt']
+                elif token < meta['dt']:
+                    token = meta['dt']
+
+        return token
 
     def update(self, block_id, meta):
 
@@ -149,6 +160,20 @@ class MongoMetaDB(MetaDB):
             filter={'block_id': block_id},
             update={'$set': meta},
             upsert=True)
+
+
+def update_metadb(block_id):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kw):
+            mt = MongoMetaDB()
+            ret = func(*args, **kw)
+            mt.update(block_id, meta={'dt': datetime.datetime.now()})
+            return ret
+        return wrapper
+    return decorator
+
+notify_data_change = update_metadb
 
 
 class LmdbMetaDB(MetaDB):
