@@ -137,12 +137,13 @@ class MongoMetaDB(MetaDB):
     def get_block_id(self, api_id):
         return self._api_map[api_id]['block_id']
 
+    def _split_block_id(self, block_id):
+        return [i for i in block_id.split(';') if i != '']
+    
     def get_latest_token(self, block_id):
 
-        sub_block_ids = [i for i in block_id.split(';') if i != '']
-
+        sub_block_ids = self._split_block_id(block_id)
         token = None
-
         for sub_id in sub_block_ids:
             meta = self._update_coll.find_one({
                 'block_id': sub_id})
@@ -155,11 +156,12 @@ class MongoMetaDB(MetaDB):
         return token
 
     def update(self, block_id, meta):
-
-        self._update_coll.update_one(
-            filter={'block_id': block_id},
-            update={'$set': meta},
-            upsert=True)
+        sub_block_ids = self._split_block_id(block_id)
+        for sub_id in sub_block_ids:
+            self._update_coll.update_one(
+                filter={'block_id': sub_id},
+                update={'$set': meta},
+                upsert=True)
 
 
 def update_metadb(block_id):

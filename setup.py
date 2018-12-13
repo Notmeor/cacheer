@@ -10,6 +10,6 @@ setup(
     author_email='kevin.inova@gmail.com',
     description='',
     install_requires=[
-        'lmdb=0.94'
+        'lmdb==0.94'
     ]
 )

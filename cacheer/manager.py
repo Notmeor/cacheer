@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 
+import os
+import time
 import inspect
 import functools
 import collections
-
+import __main__
 from pandas.io.pickle import pkl
 import hashlib
 
@@ -12,7 +14,8 @@ import pymongo
 import logging
 
 from cacheer.store import LmdbStore as Store, MongoMetaDB as MetaDB
-from cacheer.utils import conf, gen_md5, setup_logging, logit, timeit
+from cacheer.utils import (conf, gen_md5, setup_logging, logit, timeit,
+                           is_defined_in_shell)
 
 
 setup_logging()
@@ -66,8 +69,9 @@ def gen_cache_key(func, *args, **kw):
 
 
 class Cache:
-    header = ''
-    body = ''
+    token = ''
+    hash = ''
+    value = ''
 
 
 class CacheManager:
@@ -83,19 +87,37 @@ class CacheManager:
     def register_api(self, api_name, block_id):
         self._metadb.add_api(api_name, block_id)
 
+    @timeit
     def write_cache(self, key, cache):
-
-        cache_hash = self._cache_store.write(key, cache.body)
 
         # write cache meta
         cache_meta = self.read_cache_meta()
+
+        # if current value of this key is being referred, make a copy before
+        # overwriting
+        if key in cache_meta:
+            key_ = None
+            for k, v in cache_meta.items():
+                if v['src_key'] == key:  # if referred
+                    key_ = '__copy_' + gen_md5(time.time())
+                    v['src_key'] = key_
+                    LOG.warning('Referred key `{}` is getting overwritten, '
+                                'make a copy `{}`'.format(key, key_))
+            if key_ is not None:  # copied
+                assert cache_meta[key]['is_ref'] is False
+                assert key_ not in cache_meta
+                cache_meta[key_] = cache_meta[key]
+                cache_meta[key_]['key'] = key_
+                self._cache_store.write(self._cache_meta_key, cache_meta)
+                copy_value = self.read_cache_value(key)
+                self._cache_store.write(key_, copy_value)
 
         # if lmdb already has same value, only store `src_key`
         has_value = False
         src_key = ''
         is_ref = False
         for k, v in cache_meta.items():
-            if v['hash'] == cache_hash:
+            if v['hash'] == cache.hash:
                 if not v['is_ref']:
                     src_key = v['key']
                     is_ref = True
@@ -103,7 +125,7 @@ class CacheManager:
                     break
 
         if not has_value:
-            self._cache_store.write(key, cache.body)
+            self._cache_store.write(key, cache.value)
         else:
             LOG.warning('{}: same value exists, only write cache meta'.format(
                 key))
@@ -112,11 +134,12 @@ class CacheManager:
             'key': key,
             'src_key': src_key,
             'is_ref': is_ref,
-            'token': cache.header,
-            'hash': cache_hash
+            'token': cache.token,
+            'hash': cache.hash
         }
         self._cache_store.write(self._cache_meta_key, cache_meta)
 
+    @timeit
     def read_cache_meta(self, key=None):
         cache_meta = self._cache_store.read(self._cache_meta_key) or {}
         if key is not None:
@@ -135,6 +158,7 @@ class CacheManager:
             return None
         return meta['hash']
 
+    @timeit
     def read_cache_value(self, key):
         meta = self.read_cache_meta(key)
         key_ = meta['src_key'] if meta['is_ref'] else key
@@ -148,7 +172,7 @@ class CacheManager:
         self._cache_store.write(self._cache_meta_key, cache_meta)
 
     def delete_cache(self, key):
-        self._cache_store.delete(key)
+
         cache_meta = self.read_cache_meta()
 
         # check if current key is being referred
@@ -188,6 +212,24 @@ class CacheManager:
         def _cache(func):
 
             api_name = func.__module__ + '.' + func.__qualname__
+
+            # TODO: cache for functions defined in shell
+            # namespace is obscure ('__main__') for functions defined in shell
+            is_shell = is_defined_in_shell(func)
+            if is_shell:
+                LOG.warning('{}: cache would have no effect for '
+                            'functions/methods defined in interactive '
+                            'shell'.format(api_name))
+
+                @functools.wraps(func)
+                def _wrapper(*args, **kw):
+                    return func(*args, **kw)
+
+                return _wrapper
+
+            if func.__module__ == '__main__':
+                api_name = __main__.__file__ + ':' + func.__qualname__
+
             func._api_meta = {'api_name': api_name}
             func._api_meta.update(api_meta)
 
@@ -211,17 +253,19 @@ class CacheManager:
 
                 # case 0: api not registered, hence cannot retrive latest token
                 if latest_token is None:
-                    LOG.info('{}: unregistered'.format(api_name))
+                    LOG.info('{}: fail to find upstream status in metadb'
+                             .format(api_name))
                     return func(*args, **kw)
 
                 # case 1: cache not found
                 if token is None:
                     new_value = func(*args, **kw)
                     cache = Cache()
-                    cache.header = latest_token
-                    cache.body = new_value
+                    cache.token = latest_token
+                    cache.hash, cache.value = gen_md5(new_value, value=True)
                     LOG.info('{}: cache not found, return new value '
                              'and write cache'.format(api_name))
+                    print('cache len:', len(cache.value))
                     self.write_cache(key, cache)
                     return new_value
 
@@ -231,7 +275,8 @@ class CacheManager:
                     # cache_value = self.read_cache_value(key)
                     cache_hash = self.read_cache_hash(key)
                     new_value = func(*args, **kw)
-                    new_value_hash = gen_md5(new_value)
+                    new_value_hash, new_value_bytes = gen_md5(
+                        new_value, value=True)
 
                     # case 2.1: value unchanged, only update token
                     # if self.compare_equal(cache_value, new_value):
@@ -244,8 +289,9 @@ class CacheManager:
                     # case 2.2: value changed, update cache
                     else:
                         cache = Cache()
-                        cache.header = latest_token
-                        cache.body = new_value
+                        cache.token = latest_token
+                        cache.value = new_value_bytes
+                        cache.hash = new_value_hash
                         self.write_cache(key, cache)
                         LOG.info('{}: cache overwritten'.format(api_name))
                         return new_value

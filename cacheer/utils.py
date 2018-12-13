@@ -9,6 +9,7 @@ import time
 import functools
 
 import hashlib
+import __main__
 
 import pandas as pd
 from pandas.io.pickle import pkl
@@ -70,9 +71,28 @@ def logit(log, before=None, after=None):
 
 
 @timeit
-def gen_md5(b):
+def gen_md5(b, value=False):
     bytes_ = b if isinstance(b, bytes) else serialize(b)
-    return hashlib.md5(bytes_).hexdigest()
+    md5 = hashlib.md5(bytes_).hexdigest()
+    if value:
+        return md5, bytes_
+    return md5
+
+
+def is_defined_in_shell(func):
+    if func.__module__ != '__main__':
+        return False
+    return not hasattr(__main__, '__file__')
+
+
+def get_api_name(func):
+    api_name = func.__module__ + '.' + func.__qualname__
+    if func.__module__ == '__main__':
+        if not hasattr(__main__, '__file__'):
+            print('cwd:', os.getcwd())
+            return api_name
+        api_name = __main__.__file__ + ':' + func.__qualname__
+    return api_name
 
 
 def setup_logging(default_path=None,
