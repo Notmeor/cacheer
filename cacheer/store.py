@@ -3,6 +3,7 @@
 import os
 import datetime
 
+import contextlib
 import functools
 import lmdb
 import pymongo
@@ -112,26 +113,38 @@ class MongoMetaDB(MetaDB):
 
     def __init__(self):
 
-        self._update_coll = pymongo.MongoClient(
-            conf['metadb-uri'])['__update_history']['status']
-        self._api_map_coll = pymongo.MongoClient(
-            conf['metadb-uri'])['__update_history']['api_map']
+        self._metadb_uri = conf['metadb-uri']
+        self._update_coll = '__update_history.status'
+        self._api_map_coll = '__update_history.api_map'
 
         self._api_map = {}
         self.load_api_map()
 
+    @contextlib.contextmanager
+    def _open_mongo(self, ns):
+        db_name, coll_name = ns.split('.', 1)
+        client = pymongo.MongoClient(self._metadb_uri)
+        coll = client[db_name][coll_name]
+        yield coll
+        client.close()
+
     def add_api(self, api_name, block_id):
-        self._api_map_coll.update_one(
-            filter={'api_name': api_name},
-            update={'$set': {'api_name': api_name,
-                             'block_id': block_id}},
-            upsert=True
-        )
+        with self._open_mongo(self._api_map_coll) as coll:
+            coll.update_one(
+                filter={'api_name': api_name},
+                update={'$set': {'api_name': api_name,
+                                'block_id': block_id}},
+                upsert=True
+            )
 
-        self.load_api_map()
+            self.load_api_map(coll)
 
-    def load_api_map(self):
-        docs = list(self._api_map_coll.find())
+    def load_api_map(self, coll=None):
+        if coll is None:
+            with self._open_mongo(self._api_map_coll) as coll:
+                docs = list(coll.find())
+        else:
+            docs = list(coll.find())
         self._api_map = {doc['api_name']: doc for doc in docs}
 
     def get_block_id(self, api_id):
@@ -143,25 +156,30 @@ class MongoMetaDB(MetaDB):
     def get_latest_token(self, block_id):
 
         sub_block_ids = self._split_block_id(block_id)
-        token = None
-        for sub_id in sub_block_ids:
-            meta = self._update_coll.find_one({
-                'block_id': sub_id})
-            if meta:
-                if token is None:
-                    token = meta['dt']
-                elif token < meta['dt']:
-                    token = meta['dt']
+
+        with self._open_mongo(self._update_coll) as coll:
+            token = None
+            for sub_id in sub_block_ids:
+                meta = coll.find_one({
+                    'block_id': sub_id})
+                if meta:
+                    if token is None:
+                        token = meta['dt']
+                    elif token < meta['dt']:
+                        token = meta['dt']
 
         return token
 
     def update(self, block_id, meta):
+        
         sub_block_ids = self._split_block_id(block_id)
-        for sub_id in sub_block_ids:
-            self._update_coll.update_one(
-                filter={'block_id': sub_id},
-                update={'$set': meta},
-                upsert=True)
+
+        with self._open_mongo(self._update_coll) as coll:
+            for sub_id in sub_block_ids:
+                coll.update_one(
+                    filter={'block_id': sub_id},
+                    update={'$set': meta},
+                    upsert=True)
 
 
 def update_metadb(block_id):

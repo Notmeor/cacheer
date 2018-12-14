@@ -146,6 +146,7 @@ class CacheManager:
                 self._cache_store.write(self._cache_meta_key, cache_meta)
                 copy_value = self.read_cache_value(key)
                 self._cache_store.write(key_, copy_value)
+                LOG.info('{}: cache duplicated'.format(key_))
 
         # if lmdb already has same value, only store `src_key`
         has_value = False
@@ -161,6 +162,8 @@ class CacheManager:
 
         if not has_value:
             self._cache_store.write(key, cache.value)
+            LOG.info('{}: cache value written'.format(
+                key))
         else:
             LOG.warning('{}: same value exists, only write cache meta'.format(
                 key))
@@ -305,7 +308,6 @@ class CacheManager:
                     cache.hash, cache.value = gen_md5(new_value, value=True)
                     LOG.info('{}: cache not found, return new value '
                              'and write cache'.format(api_name))
-                    print('cache len:', len(cache.value))
                     self.write_cache(key, cache)
                     return new_value
 
