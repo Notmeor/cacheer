@@ -131,3 +131,9 @@ def load_config(path=None):
 
 conf = load_config(path=os.getenv('CACHEER_CONFIG'))
 setup_logging(default_path=os.getenv('CACHEER_CONFIG'))
+
+
+# This is a fix for logging in multiple processes
+# Source: https://github.com/jruere/multiprocessing-logging.git
+from cacheer import multiprocessing_logging
+multiprocessing_logging.install_mp_handler()
