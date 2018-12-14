@@ -86,6 +86,9 @@ def is_defined_in_shell(func):
 
 
 def get_api_name(func):
+    """
+    Deprecated
+    """
     api_name = func.__module__ + '.' + func.__qualname__
     if func.__module__ == '__main__':
         if not hasattr(__main__, '__file__'):
@@ -126,4 +129,5 @@ def load_config(path=None):
     return conf
 
 
-conf = load_config()
+conf = load_config(path=os.getenv('CACHEER_CONFIG'))
+setup_logging(default_path=os.getenv('CACHEER_CONFIG'))

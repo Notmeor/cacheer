@@ -1,18 +1,10 @@
 ---
 
-src_url: ''
-
-dst_url: ''
-
-whitelist: []
-
-blacklist: []
-
 # metadb
 metadb-uri: 
 
 # lmdb store
-lmdb-uri: '/Users/eisenheim/work/share/cache/lmdb'
+lmdb-uri:
 
 map-size: 107374182400
 
@@ -37,7 +29,7 @@ logging:
             class: logging.handlers.RotatingFileHandler
             level: INFO
             formatter: debug
-            filename: /Users/eisenheim/work/share/cache/lab_cache_info.log
+            filename: info.log
             maxBytes: 10240 # 1MB
             backupCount: 20
             encoding: utf8
@@ -46,7 +38,7 @@ logging:
             class: logging.handlers.RotatingFileHandler
             level: ERROR
             formatter: simple
-            filename: /Users/eisenheim/work/share/cache/lab_cache_info.log
+            filename: error.log
             maxBytes: 10240 # 1MB
             backupCount: 20
             encoding: utf8

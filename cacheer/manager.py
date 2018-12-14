@@ -8,8 +8,7 @@ import collections
 import __main__
 from pandas.io.pickle import pkl
 import hashlib
-
-import pymongo
+import contextlib
 
 import logging
 
@@ -17,8 +16,6 @@ from cacheer.store import LmdbStore as Store, MongoMetaDB as MetaDB
 from cacheer.utils import (conf, gen_md5, setup_logging, logit, timeit,
                            is_defined_in_shell)
 
-
-setup_logging()
 LOG = logging.getLogger(__file__)
 
 BASE_BLOCK_ID = '${api-fullname}'
@@ -83,6 +80,44 @@ class CacheManager:
 
         self._token_prefix = '__token_'
         self._cache_meta_key = '__cache_meta'
+
+        self._global_tags = []
+
+        self.enable_cache()
+
+    def __call__(self, *args, **kw):
+        return self.cache(*args, **kw)
+
+    @classmethod
+    def enable_cache(cls):
+        os.environ['USE_LAB_CACHE'] = 'true'
+
+    @classmethod
+    def disable_cache(cls):
+        os.environ['USE_LAB_CACHE'] = 'false'
+
+    @property
+    def is_using_cache(self):
+        return os.getenv('USE_LAB_CACHE') == 'true'
+
+    @contextlib.contextmanager
+    def no_cache(self):
+        # TODO: sync lock
+        _use_cache = self.is_using_cache
+        self.disable_cache()
+        yield None
+        if _use_cache:
+            self.enable_cache()
+
+    def use_cache(self):
+        # couterpart of no_cache
+        raise NotImplementedError
+
+    def add_tag(self, block_id, api_name=None):
+        if api_name is None:  # a global tag
+            self._global_tags.append(block_id)
+        else:
+            raise NotImplementedError
 
     def register_api(self, api_name, block_id):
         self._metadb.add_api(api_name, block_id)
@@ -244,11 +279,16 @@ class CacheManager:
             @functools.wraps(func)
             def wrapper(*args, **kw):
 
+                # cache disabled
+                if not self.is_using_cache:
+                    return func(*args, **kw)
+
                 key, api_arg = gen_cache_key(func, *args, **kw)
                 LOG.info('Request: {}, hash={}'.format(api_arg, key))
 
                 block_id = self.get_block_id(api_name)
-                latest_token = self.get_latest_token(block_id)
+                tag = ';'.join([block_id] + self._global_tags)
+                latest_token = self.get_latest_token(tag)
                 token = self.read_cache_token(key)
 
                 # case 0: api not registered, hence cannot retrive latest token
@@ -307,6 +347,10 @@ class CacheManager:
 
 cache_manager = CacheManager(Store(), MetaDB())
 
+
 @cache_manager.cache()
 def try_sth2(a, b, c=None):
     return '{}+{}+{}'.format(a, b, c)
+
+
+
