@@ -7,6 +7,7 @@ import contextlib
 import functools
 import lmdb
 import pymongo
+import sqlite3
 
 import logging
 
@@ -26,17 +27,17 @@ class LmdbStore:
             except NameError:  # so it would work in python shell
                 db_path = os.path.join(os.path.realpath(''), 'lmdb')
 
-        self.map_size = conf['map-size'] or 1024 * 1024 * 10
+        self.map_size = map_size = conf['map-size'] or 1024 * 1024 * 10
 
         self._envs = {}
-        # self._env = lmdb.open(db_path, map_size=map_size)
+        self._env = lmdb.open(db_path, map_size=map_size)
 
-    @property
-    def _env(self):
-        pid = os.getpid()
-        if pid not in self._envs:
-            self._envs[pid] = lmdb.open(self.db_path, map_size=self.map_size)
-        return self._envs[pid]
+#    @property
+#    def _env(self):
+#        pid = os.getpid()
+#        if pid not in self._envs:
+#            self._envs[pid] = lmdb.open(self.db_path, map_size=self.map_size)
+#        return self._envs[pid]
 
     def __enter__(self):
         pass
@@ -223,3 +224,125 @@ class LmdbMetaDB(MetaDB):
         key = self._prefix + block_id
         LOG.warning('set: {} {}'.format(block_id, key))
         self._store.write(key, meta)
+
+
+class SqliteStore(object):
+
+    # TODO: use sqlalchemy
+
+    def __init__(self, db_name, table_name, fields):
+        self.table_name = table_name
+
+        assert 'id' not in [f.lower() for f in fields]
+        self.fields = fields
+
+        self._conn = sqlite3.connect(db_name + '.db')
+
+        # self._conn.row_factory = sqlite3.Row
+        def dict_factory(cursor, row):
+            d = {}
+            for idx, col in enumerate(cursor.description):
+                d[col[0]] = row[idx]
+            return d
+        self._conn.row_factory = dict_factory
+
+        self.assure_table(table_name)
+
+    def close(self):
+        self._conn.commit()
+        self._conn.close()
+
+    def __del__(self):
+        # FIXME: use context manager
+        self.close()
+
+    def assure_table(self, name):
+        try:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM {} LIMIT 1".format(name))
+        except sqlite3.OperationalError:
+            fields_str = ','.join(self.fields)
+            fields_str = 'ID INTEGER PRIMARY KEY,' + fields_str
+            cursor.execute("CREATE TABLE {} ({})".format(name, fields_str))
+            self._conn.commit()
+
+    def write(self, doc):
+
+        cursor = self._conn.cursor()
+        statement = "INSERT INTO {} ({}) VALUES ({})".format(
+            self.table_name,
+            ','.join(doc.keys()),
+            ','.join(['?'] * len(doc))
+        )
+        cursor.execute(statement, list(doc.values()))
+        self._conn.commit()
+
+    def write_many(self, docs):
+        list(map(self.write, docs))
+
+    def read(self, query=None, limit=None):
+
+        statement = "SELECT {} FROM {}".format(
+            ','.join(self.fields), self.table_name)
+        if query:
+            query_str = self._format_condition(query)
+            statement += " WHERE {}".format(query_str)
+
+        if limit:
+            statement += " ORDER BY ID DESC LIMIT {}".format(limit)
+
+        cursor = self._conn.cursor()
+        return cursor.execute(statement).fetchall()
+
+    def read_latest(self, query):
+        query_str = self._format_condition(query)
+        statement = (
+            "SELECT {fields} FROM {table} WHERE ID in" +
+            "(SELECT MAX(ID) FROM {table} WHERE {con} GROUP BY code)"
+        ).format(
+            fields=','.join(self.fields),
+            con=query_str,
+            table=self.table_name)
+
+        cursor = self._conn.cursor()
+        return cursor.execute(statement).fetchall()
+
+    def read_distinct(self, fields):
+        cursor = self._conn.cursor()
+        ret = cursor.execute("SELECT DISTINCT {} FROM {}".format(
+                ','.join(fields), self.table_name))
+        return ret
+
+    @staticmethod
+    def _format_assignment(doc):
+        s = str(doc)
+        formatted = s[2:-1].replace(
+            "': ", '=').replace(", '", ',')
+        return formatted
+
+    @staticmethod
+    def _format_condition(doc):
+        if isinstance(doc, str):
+            return doc
+        s = str(doc)
+        formatted = s[2:-1].replace(
+            "': ", '=').replace(", '", ',').replace(',', ' and ')
+        return formatted
+
+    def update(self, query, document):
+        cursor = self._conn.cursor()
+
+        query_str = self._format_condition(query)
+        document_str = self._format_assignment(document)
+
+        statement = "UPDATE {} SET {} WHERE {}".format(
+            self.table_name,
+            document_str,
+            query_str
+        )
+
+        cursor.execute(statement)
+        self._conn.commit()
+
+    def delete(self, query):
+        raise NotImplementedError
