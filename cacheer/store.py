@@ -33,7 +33,7 @@ class LmdbStore:
 
     @property
     def _env(self):
-        pid = os.get_pid()
+        pid = os.getpid()
         if pid not in self._envs:
             self._envs[pid] = lmdb.open(self.db_path, map_size=self.map_size)
         return self._envs[pid]
