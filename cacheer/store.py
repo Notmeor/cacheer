@@ -19,15 +19,24 @@ class LmdbStore:
 
     def __init__(self):
 
-        db_path = conf['lmdb-uri']
+        self.db_path = db_path = conf['lmdb-uri']
         if not db_path:
             try:
                 db_path = os.path.join(os.path.dirname(__file__), 'lmdb')
             except NameError:  # so it would work in python shell
                 db_path = os.path.join(os.path.realpath(''), 'lmdb')
 
-        map_size = conf['map-size'] or 1024 * 1024 * 10
-        self._env = lmdb.open(db_path, map_size=map_size)
+        self.map_size = conf['map-size'] or 1024 * 1024 * 10
+
+        self._envs = {}
+        # self._env = lmdb.open(db_path, map_size=map_size)
+
+    @property
+    def _env(self):
+        pid = os.get_pid()
+        if pid not in self._envs:
+            self._envs[pid] = lmdb.open(self.db_path, map_size=self.map_size)
+        return self._envs[pid]
 
     def __enter__(self):
         pass
@@ -152,7 +161,7 @@ class MongoMetaDB(MetaDB):
 
     def _split_block_id(self, block_id):
         return [i for i in block_id.split(';') if i != '']
-    
+
     def get_latest_token(self, block_id):
 
         sub_block_ids = self._split_block_id(block_id)
@@ -171,7 +180,7 @@ class MongoMetaDB(MetaDB):
         return token
 
     def update(self, block_id, meta):
-        
+
         sub_block_ids = self._split_block_id(block_id)
 
         with self._open_mongo(self._update_coll) as coll:
