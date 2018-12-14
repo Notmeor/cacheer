@@ -276,7 +276,6 @@ class CacheManager:
                 if BASE_BLOCK_ID not in block_id:
                     block_id_ = BASE_BLOCK_ID + ';' + block_id
                 block_id_ = block_id_.replace(BASE_BLOCK_ID, api_name)
-                print('block_id_:', block_id_)
                 self.register_api(api_name, block_id_)
 
             @functools.wraps(func)
