@@ -32,6 +32,10 @@ class LmdbStore:
         self.map_size = map_size = conf['map-size'] or 1024 * 1024 * 10
 
         self._envs = {}
+
+        # init lmdb
+        env = lmdb.open(db_path, map_size=map_size)
+        env.close()
         self._env = lmdb.open(db_path, map_size=map_size, readonly=True)
 
 #    @property
