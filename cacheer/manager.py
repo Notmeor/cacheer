@@ -136,7 +136,7 @@ class CacheManager:
         # write cache meta
         cache_meta = self.read_cache_meta()
 
-        has_value = cache.hash in [v['hash'] for v in cache_meta]
+        has_value = cache.hash in [v['hash'] for v in cache_meta.values()]
         
         cache_meta[key] = {
             'key': key,
