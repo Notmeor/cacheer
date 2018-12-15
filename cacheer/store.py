@@ -279,6 +279,7 @@ class SqliteStore(object):
 
         self.assure_table(table_name)
     
+    @property
     def _conn(self):
         pid = os.getpid()
         if pid not in self._conns:
