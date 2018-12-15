@@ -37,14 +37,14 @@ class LmdbStore:
         # init lmdb
         env = lmdb.open(db_path, map_size=map_size)
         env.close()
-        self._env = lmdb.open(db_path, map_size=map_size, readonly=True)
+        # self._env = lmdb.open(db_path, map_size=map_size, readonly=True)
 
-#    @property
-#    def _env(self):
-#        pid = os.getpid()
-#        if pid not in self._envs:
-#            self._envs[pid] = lmdb.open(self.db_path, map_size=self.map_size)
-#        return self._envs[pid]
+    @property
+    def _env(self):
+        pid = os.getpid()
+        if pid not in self._envs:
+            self._envs[pid] = lmdb.open(self.db_path, map_size=self.map_size, readonly=True)
+        return self._envs[pid]
 
     def __enter__(self):
         pass
