@@ -11,6 +11,7 @@ import sqlite3
 
 import logging
 
+import multiprocessing
 import threading
 
 from cacheer.utils import serialize, deserialize, conf, timeit, gen_md5
@@ -53,7 +54,8 @@ class LmdbStore:
 
     def write(self, key, value):
         # self._write(key, value, env=self._write_env)
-        threading.Thread(target=self._write, args=(key, value)).start()
+        worker = multiprocessing.Process
+        worker(target=self._write, args=(key, value)).start()
 
     def _write(self, key, value, env=None):
         env = env or lmdb.open(
@@ -76,7 +78,8 @@ class LmdbStore:
 
     def delete(self, key):
         # self._delete(key, env=self._write_env)
-        threading.Thread(target=self._delete, args=(key,)).start()
+        worker = multiprocessing.Process
+        worker(target=self._delete, args=(key,)).start()
 
     def _delete(self, key, env=None):
         env = env or lmdb.open(
