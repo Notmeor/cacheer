@@ -32,7 +32,7 @@ class LmdbStore:
         self.map_size = map_size = conf['map-size'] or 1024 * 1024 * 10
 
         self._envs = {}
-        self._env = lmdb.open(db_path, map_size=map_size)
+        self._env = lmdb.open(db_path, map_size=map_size, readonly=True)
 
 #    @property
 #    def _env(self):
@@ -48,7 +48,7 @@ class LmdbStore:
         pass
 
     def write(self, key, value):
-        # self._write(key, value, env=self._env)
+        # self._write(key, value, env=self._write_env)
         threading.Thread(target=self._write, args=(key, value)).start()
 
     def _write(self, key, value, env=None):
@@ -69,7 +69,7 @@ class LmdbStore:
             return deserialize(value)
 
     def delete(self, key):
-        # self._delete(key, env=self._env)
+        # self._delete(key, env=self._write_env)
         threading.Thread(target=self._delete, args=(key,)).start()
 
     def _delete(self, key, env=None):
