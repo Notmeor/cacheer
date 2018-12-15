@@ -259,21 +259,33 @@ class SqliteStore(object):
 
     def __init__(self, db_name, table_name, fields):
         self.table_name = table_name
+        self.db_name = db_name
 
         assert 'id' not in [f.lower() for f in fields]
         self.fields = fields
 
-        self._conn = sqlite3.connect(db_name + '.db')
-
-        # self._conn.row_factory = sqlite3.Row
         def dict_factory(cursor, row):
             d = {}
             for idx, col in enumerate(cursor.description):
                 d[col[0]] = row[idx]
             return d
-        self._conn.row_factory = dict_factory
+        self._row_factory = dict_factory
+        
+        # self._conn = sqlite3.connect(db_name + '.db'
+        # self._conn.row_factory = dict_factory
+        ## self._conn.row_factory = sqlite3.Row
+
+        self._conns = {}
 
         self.assure_table(table_name)
+    
+    def _conn(self):
+        pid = os.getpid()
+        if pid not in self._conns:
+            self._conns[pid] = conn = sqlite3.connect(
+                self.db_name + '.db')
+            conn.row_factory = self._row_factory
+        return self._conns[pid]
 
     def close(self):
         self._conn.commit()
