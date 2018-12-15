@@ -123,60 +123,34 @@ class CacheManager:
     def register_api(self, api_name, block_id):
         self._metadb.add_api(api_name, block_id)
 
+    def _get_all_keys(self):
+        # FIXME: only valid with SqliteCacheStore
+        res = self._cache_store._store.read_distinct(['key'])
+        return [i['key'] for i in res]
+
     @timeit
     def write_cache(self, key, cache):
+
+        # TODO: remove expired cache value only when limit is about to be hit
 
         # write cache meta
         cache_meta = self.read_cache_meta()
 
-        # if current value of this key is being referred, make a copy before
-        # overwriting
-        if key in cache_meta:
-            key_ = None
-            for k, v in cache_meta.items():
-                if v['src_key'] == key:  # if referred
-                    key_ = '__copy_' + gen_md5(time.time())
-                    v['src_key'] = key_
-                    LOG.warning('Referred key `{}` is getting overwritten, '
-                                'make a copy `{}`'.format(key, key_))
-            if key_ is not None:  # copied
-                assert cache_meta[key]['is_ref'] is False
-                assert key_ not in cache_meta
-                cache_meta[key_] = cache_meta[key]
-                cache_meta[key_]['key'] = key_
-                self._cache_store.write(self._cache_meta_key, cache_meta)
-                copy_value = self.read_cache_value(key)
-                self._cache_store.write(key_, copy_value)
-                LOG.info('{}: cache duplicated'.format(key_))
-
-        # if lmdb already has same value, only store `src_key`
-        has_value = False
-        src_key = ''
-        is_ref = False
-        for k, v in cache_meta.items():
-            if v['hash'] == cache.hash:
-                if not v['is_ref']:
-                    src_key = v['key']
-                    is_ref = True
-                    has_value = True
-                    break
-
-        if not has_value:
-            self._cache_store.write(key, cache.value)
-            LOG.info('{}: cache value written'.format(
-                key))
-        else:
-            LOG.warning('{}: same value exists, only write cache meta'.format(
-                key))
-
+        has_value = cache.hash in [v['hash'] for v in cache_meta]
+        
         cache_meta[key] = {
             'key': key,
-            'src_key': src_key,
-            'is_ref': is_ref,
             'token': cache.token,
             'hash': cache.hash
         }
         self._cache_store.write(self._cache_meta_key, cache_meta)
+        
+        value_stored = cache.hash in self._get_all_keys()
+
+        if has_value or value_stored:
+            LOG.info('{}: cache value already exists or is being created')
+        else:
+            self._cache_store.write(cache.hash, cache.value)
 
     @timeit
     def read_cache_meta(self, key=None):
@@ -200,10 +174,19 @@ class CacheManager:
     @timeit
     def read_cache_value(self, key):
         meta = self.read_cache_meta(key)
-        key_ = meta['src_key'] if meta['is_ref'] else key
-        if meta['is_ref']:
-            LOG.warning('{}: is ref, would read by src_key'.format(key))
-        return self._cache_store.read(key_)
+        cache_key = meta['hash']
+        # cache value might be still in writing
+        # wait until value found or timeout 
+        seconds_before_timeout = 3600
+        while cache_key not in self._get_all_keys():
+            LOG.warning('{}: cache value might be still in writing, '
+                        'wait until retrival or timeout'.format(key))
+            seconds_before_timeout -= 1
+            if seconds_before_timeout < 0:
+                raise Exception('read_cache_value timeout')
+        if seconds_before_timeout < 3600:
+            LOG.info(f'Waited {3600 - seconds_before_timeout} seconds')
+        return self._cache_store.read(cache_key)
 
     def update_cache_token(self, key, token):
         cache_meta = self.read_cache_meta()
