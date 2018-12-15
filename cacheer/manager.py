@@ -148,9 +148,11 @@ class CacheManager:
         value_stored = cache.hash in self._get_all_keys()
 
         if has_value or value_stored:
-            LOG.info('{}: cache value already exists or is being created')
+            LOG.info('{}: cache value already exists or is being created'
+                     .format(key))
         else:
             self._cache_store.write(cache.hash, cache.value)
+            LOG.info('{}: cache written'.format(key))
 
     @timeit
     def read_cache_meta(self, key=None):
