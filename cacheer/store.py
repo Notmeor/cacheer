@@ -63,6 +63,8 @@ class LmdbStore:
         value_hash = gen_md5(b_value)
         with env.begin(write=True) as txn:
             txn.put(key.encode(), b_value)
+        
+        env.close()
         return value_hash
 
     @timeit
@@ -82,6 +84,8 @@ class LmdbStore:
 
         with env.begin(write=True) as txn:
             txn.delete(key.encode())
+        
+        env.close()
 
     def close(self):
         self._env.close()
