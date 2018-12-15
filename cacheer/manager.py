@@ -188,7 +188,9 @@ class CacheManager:
                 raise Exception('read_cache_value timeout')
         if seconds_before_timeout < 3600:
             LOG.info(f'Waited {3600 - seconds_before_timeout} seconds')
-        return self._cache_store.read(cache_key)
+        cache_value = self._cache_store.read(cache_key)
+        LOG.info(f'{key}: cache loaded')
+        return cache_value
 
     def update_cache_token(self, key, token):
         cache_meta = self.read_cache_meta()
