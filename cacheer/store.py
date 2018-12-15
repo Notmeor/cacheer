@@ -11,6 +11,8 @@ import sqlite3
 
 import logging
 
+import threading
+
 from cacheer.utils import serialize, deserialize, conf, timeit, gen_md5
 
 LOG = logging.getLogger(__file__)
@@ -46,9 +48,16 @@ class LmdbStore:
         pass
 
     def write(self, key, value):
+        # self._write(key, value, env=self._env)
+        threading.Thread(target=self._write, args=(key, value)).start()
+
+    def _write(self, key, value, env=None):
+        env = env or lmdb.open(
+            self.db_path, map_size=self.map_size)
+
         b_value = serialize(value)
         value_hash = gen_md5(b_value)
-        with self._env.begin(write=True) as txn:
+        with env.begin(write=True) as txn:
             txn.put(key.encode(), b_value)
         return value_hash
 
@@ -60,7 +69,14 @@ class LmdbStore:
             return deserialize(value)
 
     def delete(self, key):
-        with self._env.begin(write=True) as txn:
+        # self._delete(key, env=self._env)
+        threading.Thread(target=self._delete, args=(key,)).start()
+
+    def _delete(self, key, env=None):
+        env = env or lmdb.open(
+            self.db_path, map_size=self.map_size)
+
+        with env.begin(write=True) as txn:
             txn.delete(key.encode())
 
     def close(self):
