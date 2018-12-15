@@ -337,7 +337,7 @@ class SqliteStore(object):
     def read_distinct(self, fields):
         cursor = self._conn.cursor()
         ret = cursor.execute("SELECT DISTINCT {} FROM {}".format(
-                ','.join(fields), self.table_name))
+                ','.join(fields), self.table_name)).fetchall()
         return ret
 
     @staticmethod
@@ -393,7 +393,7 @@ class SqliteCacheStore(object):
         self._store.write({'key': key, 'value': b_value})
     
     def read(self, key):
-        res = self._store.read({'key': key})
+        res = self._store.read({'key': key}, limit=1)
         assert len(res) <= 1
         if res:
             return deserialize(res[0]['value'])
