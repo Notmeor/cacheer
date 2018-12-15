@@ -372,4 +372,31 @@ class SqliteStore(object):
         self._conn.commit()
 
     def delete(self, query):
-        raise NotImplementedError
+        query_str = self._format_condition(query)
+        cursor = self._conn.cursor()
+        cursor.execute("DELETE FROM {} WHERE {}".format(
+            self.table_name,
+            query_str
+        ))
+        self._conn.commit()
+
+
+class SqliteCacheStore(object):
+    
+    def __init__(self):
+        self.db_path = conf['sqlite-uri']
+        self._store = SqliteStore(
+            self.db_path, 'lab_cache', ['key', 'value'])
+    
+    def write(self, key, value):
+        b_value = serialize(value)
+        self._store.write({'key': key, 'value': b_value})
+    
+    def read(self, key):
+        res = self._store.read({'key': key})
+        assert len(res) <= 1
+        if res:
+            return deserialize(res[0]['value'])
+    
+    def delete(self, key):
+        self._store.delete({'key': key})

@@ -12,7 +12,8 @@ import contextlib
 
 import logging
 
-from cacheer.store import LmdbStore as Store, MongoMetaDB as MetaDB
+# from cacheer.store import LmdbStore as Store, MongoMetaDB as MetaDB
+from cacheer.store import SqliteCacheStore as Store, MongoMetaDB as MetaDB
 from cacheer.utils import (conf, gen_md5, setup_logging, logit, timeit,
                            is_defined_in_shell)
 
