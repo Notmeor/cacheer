@@ -12,10 +12,9 @@ import contextlib
 
 import logging
 
-# from cacheer.store import LmdbStore as Store, MongoMetaDB as MetaDB
 from cacheer.store import SqliteCacheStore as Store, MongoMetaDB as MetaDB
-from cacheer.utils import (conf, gen_md5, setup_logging, logit, timeit,
-                           is_defined_in_shell)
+from cacheer.serializer import serializer
+from cacheer.utils import timeit, is_defined_in_shell
 
 LOG = logging.getLogger(__file__)
 
@@ -137,14 +136,14 @@ class CacheManager:
         cache_meta = self.read_cache_meta()
 
         has_value = cache.hash in [v['hash'] for v in cache_meta.values()]
-        
+
         cache_meta[key] = {
             'key': key,
             'token': cache.token,
             'hash': cache.hash
         }
         self._cache_store.write(self._cache_meta_key, cache_meta)
-        
+
         value_stored = cache.hash in self._get_all_keys()
 
         if has_value or value_stored:
@@ -178,7 +177,7 @@ class CacheManager:
         meta = self.read_cache_meta(key)
         cache_key = meta['hash']
         # cache value might be still in writing
-        # wait until value found or timeout 
+        # wait until value found or timeout
         seconds_before_timeout = 3600
         while cache_key not in self._get_all_keys():
             LOG.warning('{}: cache value might be still in writing, '
@@ -229,10 +228,6 @@ class CacheManager:
 
     def get_block_id(self, api_name):
         return self._metadb.get_block_id(api_name)
-
-    @timeit
-    def compare_equal(self, el1, el2):
-        return gen_md5(el1) == gen_md5(el2)
 
     def cache(self, block_id=BASE_BLOCK_ID, api_meta={}):
         def _cache(func):
@@ -292,7 +287,9 @@ class CacheManager:
                     new_value = func(*args, **kw)
                     cache = Cache()
                     cache.token = latest_token
-                    cache.hash, cache.value = gen_md5(new_value, value=True)
+                    cache.hash, cache.value = serializer.gen_md5(
+                        new_value, value=True)
+
                     LOG.info('{}: cache not found, return new value '
                              'and write cache'.format(api_name))
                     self.write_cache(key, cache)
@@ -304,7 +301,7 @@ class CacheManager:
                     # cache_value = self.read_cache_value(key)
                     cache_hash = self.read_cache_hash(key)
                     new_value = func(*args, **kw)
-                    new_value_hash, new_value_bytes = gen_md5(
+                    new_value_hash, new_value_bytes = serializer.gen_md5(
                         new_value, value=True)
 
                     # case 2.1: value unchanged, only update token
@@ -335,11 +332,4 @@ class CacheManager:
 
 
 cache_manager = CacheManager(Store(), MetaDB())
-
-
-@cache_manager.cache()
-def try_sth2(a, b, c=None):
-    return '{}+{}+{}'.format(a, b, c)
-
-
 

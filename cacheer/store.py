@@ -14,10 +14,13 @@ import logging
 import multiprocessing
 import threading
 
-from cacheer.utils import serialize, deserialize, conf, timeit, gen_md5
+from cacheer.serializer import serializer
+from cacheer.utils import conf, timeit
 
 LOG = logging.getLogger(__file__)
 
+
+# TODO: try apache-ignite/apache-arrow
 
 class LmdbStore:
 
@@ -43,7 +46,9 @@ class LmdbStore:
     def _env(self):
         pid = os.getpid()
         if pid not in self._envs:
-            self._envs[pid] = lmdb.open(self.db_path, map_size=self.map_size, readonly=True)
+            self._envs[pid] = lmdb.open(self.db_path,
+                                        map_size=self.map_size,
+                                        readonly=True)
         return self._envs[pid]
 
     def __enter__(self):
@@ -61,11 +66,11 @@ class LmdbStore:
         env = env or lmdb.open(
             self.db_path, map_size=self.map_size)
 
-        b_value = serialize(value)
-        value_hash = gen_md5(b_value)
+        b_value = serializer.serialize(value)
+        value_hash = serializer.gen_md5(b_value)
         with env.begin(write=True) as txn:
             txn.put(key.encode(), b_value)
-        
+
         env.close()
         return value_hash
 
@@ -74,7 +79,7 @@ class LmdbStore:
         with self._env.begin() as txn:
             value = txn.get(key.encode())
         if value is not None:
-            return deserialize(value)
+            return serializer.deserialize(value)
 
     def delete(self, key):
         # self._delete(key, env=self._write_env)
@@ -87,45 +92,11 @@ class LmdbStore:
 
         with env.begin(write=True) as txn:
             txn.delete(key.encode())
-        
+
         env.close()
 
     def close(self):
         self._env.close()
-
-
-#class CacheMeta:
-#
-#    key = ''
-#    hash = ''
-#    token = ''
-#
-#
-#class CacheStore(LmdbStore):
-#
-#    def __init__(self):
-#        self._cache_meta_key = b'__cache_meta'
-#        # self._cache_meta_value = {}
-#
-#    def write(self, key, value):
-#        with self._env.begin(write=True) as txn:
-#
-#            meta_key = self._cache_meta_key
-#            res = txn.get(meta_key)
-#            if res is None:
-#                meta_value = []
-#            else:
-#                meta_value = deserialize(res)
-#
-#            b_value = serialize(value)
-#            b_value_hash = gen_md5(b_value)
-#
-#            meta_value.append({
-#                    })
-#
-#            txn.put(meta_key,
-#                    serialize(self._cache_meta_value))
-#            txn.put(key.encode(), serialize(value))
 
 
 class MetaDB:
@@ -170,7 +141,7 @@ class MongoMetaDB(MetaDB):
             coll.update_one(
                 filter={'api_name': api_name},
                 update={'$set': {'api_name': api_name,
-                                'block_id': block_id}},
+                                 'block_id': block_id}},
                 upsert=True
             )
 
@@ -264,37 +235,32 @@ class SqliteStore(object):
         assert 'id' not in [f.lower() for f in fields]
         self.fields = fields
 
-        def dict_factory(cursor, row):
-            d = {}
-            for idx, col in enumerate(cursor.description):
-                d[col[0]] = row[idx]
-            return d
-        self._row_factory = dict_factory
-        
-        # self._conn = sqlite3.connect(db_name + '.db'
-        # self._conn.row_factory = dict_factory
-        ## self._conn.row_factory = sqlite3.Row
-
         self._conns = {}
 
         self.assure_table(table_name)
-    
+
     @property
     def _conn(self):
+
         pid = os.getpid()
+
         if pid not in self._conns:
             self._conns[pid] = conn = sqlite3.connect(
                 self.db_name + '.db')
-            conn.row_factory = self._row_factory
+
+            def dict_factory(cursor, row):
+                d = {}
+                for idx, col in enumerate(cursor.description):
+                    d[col[0]] = row[idx]
+                return d
+
+            conn.row_factory = dict_factory
+
         return self._conns[pid]
 
     def close(self):
         self._conn.commit()
         self._conn.close()
-
-    def __del__(self):
-        # FIXME: use context manager
-        self.close()
 
     def assure_table(self, name):
         try:
@@ -395,21 +361,23 @@ class SqliteStore(object):
 
 
 class SqliteCacheStore(object):
-    
+
     def __init__(self):
         self.db_path = conf['sqlite-uri']
         self._store = SqliteStore(
             self.db_path, 'lab_cache', ['key', 'value'])
-    
+
+    @timeit
     def write(self, key, value):
-        b_value = serialize(value)
+        b_value = serializer.serialize(value)
         self._store.write({'key': key, 'value': b_value})
-    
+
+    @timeit
     def read(self, key):
         res = self._store.read({'key': key}, limit=1)
         assert len(res) <= 1
         if res:
-            return deserialize(res[0]['value'])
-    
+            return serializer.deserialize(res[0]['value'])
+
     def delete(self, key):
         self._store.delete({'key': key})

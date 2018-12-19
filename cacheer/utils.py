@@ -21,8 +21,9 @@ def timeit(func):
     def wrapper(*args, **kwargs):
         t0_ = time.time()
         ret = func(*args, **kwargs)
-        print('%s in %.6f secs' % (
-            func.__name__, time.time() - t0_))
+        func_name = func.__module__ + '.' + func.__qualname__
+        print("'%s' run in %.6f secs" % (
+            func_name, time.time() - t0_))
         return ret
     return wrapper
 
@@ -37,15 +38,6 @@ def serialize(obj):
 @timeit
 def deserialize(b):
     return pkl.loads(b)
-
-
-@timeit
-def serialize_exp(obj):
-    if isinstance(obj, pd.DataFrame):
-        if obj.memory_usage(deep=True).sum() > 1000000:
-            print('msgpack')
-            return packers.to_msgpack(None, obj)
-    return serialize(obj)
 
 
 @timeit
@@ -137,3 +129,4 @@ setup_logging(default_path=os.getenv('CACHEER_CONFIG'))
 # Source: https://github.com/jruere/multiprocessing-logging.git
 from cacheer import multiprocessing_logging
 multiprocessing_logging.install_mp_handler()
+
