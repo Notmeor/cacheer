@@ -195,7 +195,7 @@ class CacheManager:
             LOG.warning(f'{key}; fail to retrieve cache value')
             if 'failure_time' not in meta:
                 meta['failure_time'] = time.time()
-                self.write_meta(key, meta)
+                self._cache_store.write_meta(key, meta)
             else:
                 if time.time() - meta['failure_time'] > 600:
                     self._cache_store.delete_meta(key)
