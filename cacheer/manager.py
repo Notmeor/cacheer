@@ -192,7 +192,7 @@ class CacheManager:
         # somehow oddly persist (bug?)
 
         if cache_key not in self._get_all_keys():
-            LOG.warning(f'{key}; fail to retrieve cache value')
+            LOG.warning(f'{key}: fail to retrieve cache value')
             if 'failure_time' not in meta:
                 meta['failure_time'] = time.time()
                 self._cache_store.write_meta(key, meta)

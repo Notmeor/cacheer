@@ -142,7 +142,7 @@ class Picklizer3(Serializer):
         # FIXME: multi column
         for name in df.columns:
             if df[name].dtype.name == 'object':
-                df.loc[:, name] = df[name].astype('category')
+                df[name] = df[name].astype('category', copy=False)
         return df
 
     @staticmethod
@@ -154,7 +154,7 @@ class Picklizer3(Serializer):
         # FIXME: have to be used with metadata
         for name in df.columns:
             if df[name].dtype.name == 'category':
-                df.loc[:, name] = df[name].astype('object')
+                df[name] = df[name].astype('object', copy=False)
         return df
 
     @classmethod
