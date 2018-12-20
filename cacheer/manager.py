@@ -21,6 +21,14 @@ LOG = logging.getLogger(__file__)
 BASE_BLOCK_ID = '${api-fullname}'
 
 
+class CacheDataNotFound(Exception):
+    pass
+
+
+class CacheCorrupted(Exception):
+    pass
+
+
 def gen_cache_key(func, *args, **kw):
 
     # func has yet to get its __self__ attr
@@ -134,6 +142,7 @@ class CacheManager:
 
         # write cache meta
         cache_meta = self.read_cache_meta()
+        print(f'cache_meta:{cache_meta}')
 
         has_value = cache.hash in [v['hash'] for v in cache_meta.values()]
 
@@ -174,20 +183,33 @@ class CacheManager:
 
     @timeit
     def read_cache_value(self, key):
-        meta = self.read_cache_meta(key)
-        cache_key = meta['hash']
+        meta = self.read_cache_meta()
+        cache_key = meta[key]['hash']
+
         # cache value might be still in writing
-        # wait until value found or timeout
-        seconds_before_timeout = 3600
-        while cache_key not in self._get_all_keys():
-            LOG.warning('{}: cache value might be still in writing, '
-                        'wait until retrival or timeout'.format(key))
-            seconds_before_timeout -= 1
-            if seconds_before_timeout < 0:
-                raise Exception('read_cache_value timeout')
-        if seconds_before_timeout < 3600:
-            LOG.info(f'Waited {3600 - seconds_before_timeout} seconds')
+        # or, if a database in use get deleted, it would lose all cache data
+        # when another sqlite connection starts, but the cache metadata might
+        # somehow oddly persist (bug?)
+
+        if cache_key not in self._get_all_keys():
+            LOG.warning(f'{key}; fail to retrieve cache value')
+            if 'failure_time' not in meta[key]:
+                meta[key]['failure_time'] = time.time()
+                self._cache_store.write(self._cache_meta_key, meta)
+            else:
+                if time.time() - meta[key]['failure_time'] > 600:
+                    meta.pop(key)
+                    self._cache_store.write(self._cache_meta_key, meta)
+                    LOG.warning(f'{key}: cache corrupted, would be removed')
+                    raise CacheCorrupted
+            raise CacheDataNotFound
+
         cache_value = self._cache_store.read(cache_key)
+        if cache_value is None:
+            if not serializer.gen_md5(cache_value) == cache_key:
+                LOG.warning(f'{key}; cache value might be lost for a db reset')
+                raise CacheDataNotFound
+
         LOG.info(f'{key}: cache loaded')
         return cache_value
 
@@ -325,7 +347,12 @@ class CacheManager:
                 # case 3: token validated
                 if token == latest_token:
                     LOG.info('{}: cache hit'.format(api_name))
-                    return self.read_cache_value(key)
+                    try:
+                        return self.read_cache_value(key)
+                    except (CacheDataNotFound, CacheCorrupted):
+                        ret = func(*args, **kw)
+                        LOG.info(f'{api_name}: skip cache')
+                        return ret
 
             return wrapper
         return _cache

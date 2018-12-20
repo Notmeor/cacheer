@@ -2,6 +2,7 @@
 
 import os
 import datetime
+import time
 
 import contextlib
 import functools
@@ -272,16 +273,31 @@ class SqliteStore(object):
             cursor.execute("CREATE TABLE {} ({})".format(name, fields_str))
             self._conn.commit()
 
-    def write(self, doc):
+    def reset_table(self, name):
+        cursor = self._conn.cursor()
+        fields_str = ','.join(self.fields)
+        fields_str = 'ID INTEGER PRIMARY KEY,' + fields_str
+        cursor.execute("CREATE TABLE {} ({})".format(name, fields_str))
+        self._conn.commit()
 
+        self.delete({})
+        self._conn.commit()
+
+    def write(self, doc):
         cursor = self._conn.cursor()
         statement = "INSERT INTO {} ({}) VALUES ({})".format(
             self.table_name,
             ','.join(doc.keys()),
             ','.join(['?'] * len(doc))
         )
-        cursor.execute(statement, list(doc.values()))
-        self._conn.commit()
+        try:
+            cursor.execute(statement, list(doc.values()))
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            print('重建连接')
+            self._conns.pop(os.getpid())
+            self.assure_table(self.table_name)
+            self.write(doc)
 
     def write_many(self, docs):
         list(map(self.write, docs))
@@ -352,8 +368,10 @@ class SqliteStore(object):
 
     def delete(self, query):
         query_str = self._format_condition(query)
+        if query_str:
+            query_str = f'WHERE {query_str} '
         cursor = self._conn.cursor()
-        cursor.execute("DELETE FROM {} WHERE {}".format(
+        cursor.execute("DELETE FROM {} {}".format(
             self.table_name,
             query_str
         ))

@@ -68,7 +68,8 @@ class Picklizer1(Serializer):
         if isinstance(obj, bytes):
             return obj
         if isinstance(obj, pd.DataFrame) and np.product(obj.shape) > 30000:
-            return pa.serialize_pandas(obj)
+            pa_buffer = pa.serialize_pandas(obj)
+            return pa_buffer.to_pybytes()
         return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
 
     @staticmethod
@@ -174,7 +175,7 @@ class Picklizer3(Serializer):
         return obj
 
 
-serializer_type = conf.get('serializer-type', 1)
+serializer_type = conf.get('serializer-type', 3)
 serializer = {
     0: Picklizer,
     1: Picklizer1,
@@ -199,5 +200,6 @@ def benchmark_object(obj, number=5):
         deser_res.append(timeit.timeit(
             lambda: p.deserialize(serialized_obj),
             number=number))
+        assert isinstance(p.deserialize(serialized_obj), pd.DataFrame)
 
     return [ser_res, deser_res]
