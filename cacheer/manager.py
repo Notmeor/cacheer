@@ -86,9 +86,6 @@ class CacheManager:
         self._cache_store = cache_store
         self._metadb = metadb
 
-        self._token_prefix = '__token_'
-        self._cache_meta_key = '__cache_meta'
-
         self._global_tags = []
 
         self.enable_cache()
@@ -146,12 +143,12 @@ class CacheManager:
 
         has_value = cache.hash in [v['hash'] for v in cache_meta.values()]
 
-        cache_meta[key] = {
+        meta = {
             'key': key,
             'token': cache.token,
             'hash': cache.hash
         }
-        self._cache_store.write(self._cache_meta_key, cache_meta)
+        self._cache_store.write_meta(key, meta)
 
         value_stored = cache.hash in self._get_all_keys()
 
@@ -162,12 +159,20 @@ class CacheManager:
             self._cache_store.write(cache.hash, cache.value)
             LOG.info('{}: cache written'.format(key))
 
+        self.clear_expired()
+
+#    @timeit
+#    def read_cache_meta(self, key=None):
+#        cache_meta = self._cache_store.read(self._cache_meta_key) or {}
+#        if key is not None:
+#            return cache_meta.get(key)
+#        return cache_meta
+
     @timeit
     def read_cache_meta(self, key=None):
-        cache_meta = self._cache_store.read(self._cache_meta_key) or {}
-        if key is not None:
-            return cache_meta.get(key)
-        return cache_meta
+        if key is None:
+            return self._cache_store.read_all_meta()
+        return self._cache_store.read_meta(key)
 
     def read_cache_token(self, key):
         meta = self.read_cache_meta(key)
@@ -183,8 +188,8 @@ class CacheManager:
 
     @timeit
     def read_cache_value(self, key):
-        meta = self.read_cache_meta()
-        cache_key = meta[key]['hash']
+        meta = self.read_cache_meta(key)
+        cache_key = meta['hash']
 
         # cache value might be still in writing
         # or, if a database in use get deleted, it would lose all cache data
@@ -193,13 +198,12 @@ class CacheManager:
 
         if cache_key not in self._get_all_keys():
             LOG.warning(f'{key}; fail to retrieve cache value')
-            if 'failure_time' not in meta[key]:
-                meta[key]['failure_time'] = time.time()
-                self._cache_store.write(self._cache_meta_key, meta)
+            if 'failure_time' not in meta:
+                meta['failure_time'] = time.time()
+                self.write_meta(key, meta)
             else:
-                if time.time() - meta[key]['failure_time'] > 600:
-                    meta.pop(key)
-                    self._cache_store.write(self._cache_meta_key, meta)
+                if time.time() - meta['failure_time'] > 600:
+                    self._cache_store.delete_meta(key)
                     LOG.warning(f'{key}: cache corrupted, would be removed')
                     raise CacheCorrupted
             raise CacheDataNotFound
@@ -213,31 +217,18 @@ class CacheManager:
         LOG.info(f'{key}: cache loaded')
         return cache_value
 
-    def update_cache_token(self, key, token):
-        cache_meta = self.read_cache_meta()
-        cache_meta[key]['token'] = token
-        self._cache_store.write(self._cache_meta_key, cache_meta)
+    def update_cache_meta(self, key, meta):
+        self._cache_store.write_meta(key, meta)
 
     def delete_cache(self, key):
 
-        cache_meta = self.read_cache_meta()
+        # logically delete cache
+        self._cache_store.delete_meta(key)
+        # TODO: remove expired
 
-        # check if current key is being referred
-        is_referred = False
-        for k, v in cache_meta.items():
-            if v['src_key'] == key:
-                is_referred = True
-                break
-
-        if is_referred:
-            LOG.info('{}: is currently being referred, would not remove it'
-                     .format(key))
-            return
-
-        cache_meta.pop(key)
-        self._cache_store.write(self._cache_meta_key, cache_meta)
-
-        self._cache_store.delete(key)
+    @timeit
+    def clear_expired(self):
+        pass
 
     def _parse_key_as_params(self, key):
         """
@@ -321,7 +312,8 @@ class CacheManager:
                 if token != latest_token:
 
                     # cache_value = self.read_cache_value(key)
-                    cache_hash = self.read_cache_hash(key)
+                    cache_meta = self.read_cache_meta(key)
+                    cache_hash = cache_meta['hash']
                     new_value = func(*args, **kw)
                     new_value_hash, new_value_bytes = serializer.gen_md5(
                         new_value, value=True)
@@ -329,7 +321,8 @@ class CacheManager:
                     # case 2.1: value unchanged, only update token
                     # if self.compare_equal(cache_value, new_value):
                     if cache_hash == new_value_hash:
-                        self.update_cache_token(key, latest_token)
+                        cache_meta['token'] = latest_token
+                        self.update_cache_meta(key, cache_meta)
                         LOG.info('{}: value unchanged, '
                                  'only update token'.format(api_name))
                         return new_value

@@ -316,15 +316,16 @@ class SqliteStore(object):
         cursor = self._conn.cursor()
         return cursor.execute(statement).fetchall()
 
-    def read_latest(self, query):
+    def read_latest(self, query, by):
         query_str = self._format_condition(query)
         statement = (
             "SELECT {fields} FROM {table} WHERE ID in" +
-            "(SELECT MAX(ID) FROM {table} WHERE {con} GROUP BY code)"
+            "(SELECT MAX(ID) FROM {table} WHERE {con} GROUP BY {by})"
         ).format(
             fields=','.join(self.fields),
             con=query_str,
-            table=self.table_name)
+            table=self.table_name,
+            by=by)
 
         cursor = self._conn.cursor()
         return cursor.execute(statement).fetchall()
@@ -344,11 +345,14 @@ class SqliteStore(object):
 
     @staticmethod
     def _format_condition(doc):
-        if isinstance(doc, str):
-            return doc
+        if not doc:
+            return 'TRUE'
         s = str(doc)
         formatted = s[2:-1].replace(
-            "': ", '=').replace(", '", ',').replace(',', ' and ')
+            "': ", ' = ').replace(
+            ", '", ',').replace(
+            "= {'$like =", 'like').replace(
+            '}', '')
         return formatted
 
     def update(self, query, document):
@@ -384,11 +388,7 @@ class SqliteCacheStore(object):
         self.db_path = conf['sqlite-uri']
         self._store = SqliteStore(
             self.db_path, 'lab_cache', ['key', 'value'])
-
-    @timeit
-    def write(self, key, value):
-        b_value = serializer.serialize(value)
-        self._store.write({'key': key, 'value': b_value})
+        self._cache_meta_prefix = '__cache_meta_'
 
     @timeit
     def read(self, key):
@@ -397,5 +397,43 @@ class SqliteCacheStore(object):
         if res:
             return serializer.deserialize(res[0]['value'])
 
+    @timeit
+    def write(self, key, value):
+        b_value = serializer.serialize(value)
+        self._store.write({'key': key, 'value': b_value})
+
     def delete(self, key):
         self._store.delete({'key': key})
+
+    def read_meta(self, key):
+        meta_key = self._cache_meta_prefix + key
+        return self.read(meta_key)
+
+    def read_all_meta(self):
+        res = self._store.read_latest(
+            query={'key': {'$like': '__cache_meta%'}},
+            by='key')
+        meta = {i['key']: serializer.deserialize(i['value']) for i in res}
+        return meta
+
+    def write_meta(self, key, meta):
+        meta_key = self._cache_meta_prefix + key
+        self.write(meta_key, meta)
+
+    def delete_meta(self, key):
+        meta_key = self._cache_meta_prefix + key
+        self.delete(meta_key)
+
+
+
+
+def _fm1(doc):
+    if not doc:
+        return 'TRUE'
+    s = str(doc)
+    formatted = s[2:-1].replace(
+        "': ", ' = ').replace(
+        ", '", ',').replace(
+        "= {'$like =", 'like').replace(
+        '}', '')
+    return formatted
