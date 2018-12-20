@@ -10,6 +10,8 @@ setup(
     author_email='kevin.inova@gmail.com',
     description='',
     install_requires=[
-        'lmdb==0.94'
+        'numpy>=1.15.4',
+        'pyarrow>=0.11.1',
+        'lmdb>=0.94'
     ]
 )

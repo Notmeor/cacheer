@@ -34,8 +34,8 @@ logging:
             class: logging.handlers.RotatingFileHandler
             level: INFO
             formatter: debug
-            filename: info.log
-            maxBytes: 10240 # 1MB
+            filename: info.logseria
+            maxBytes: 10485760 # 10MB
             backupCount: 20
             encoding: utf8
     
@@ -44,7 +44,7 @@ logging:
             level: ERROR
             formatter: simple
             filename: error.log
-            maxBytes: 10240 # 1MB
+            maxBytes: 10485760 # 10MB
             backupCount: 20
             encoding: utf8
     

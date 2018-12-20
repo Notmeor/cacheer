@@ -20,6 +20,8 @@ LOG = logging.getLogger(__file__)
 
 BASE_BLOCK_ID = '${api-fullname}'
 
+JPY_USER = os.getenv('JPY_USER', 'null')
+
 
 class CacheDataNotFound(Exception):
     pass
@@ -161,13 +163,6 @@ class CacheManager:
 
         self.clear_expired()
 
-#    @timeit
-#    def read_cache_meta(self, key=None):
-#        cache_meta = self._cache_store.read(self._cache_meta_key) or {}
-#        if key is not None:
-#            return cache_meta.get(key)
-#        return cache_meta
-
     @timeit
     def read_cache_meta(self, key=None):
         if key is None:
@@ -282,7 +277,8 @@ class CacheManager:
                     return func(*args, **kw)
 
                 key, api_arg = gen_cache_key(func, *args, **kw)
-                LOG.info('Request: {}, hash={}'.format(api_arg, key))
+                LOG.info('JPY_USER: {}, Request: {}, hash={}'.format(
+                    JPY_USER, api_arg, key))
 
                 block_id = self.get_block_id(api_name)
                 tag = ';'.join([block_id] + self._global_tags)
