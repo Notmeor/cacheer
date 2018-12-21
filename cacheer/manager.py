@@ -65,10 +65,19 @@ def gen_cache_key(func, *args, **kw):
     bound_arg.apply_defaults()
     arg = bound_arg.arguments
 
+    meta = func._api_meta.copy()
+
     if _is_bound_method(func):  # pop first argument
+
+        owner = list(arg.values())[0]
         arg = collections.OrderedDict(list(arg.items())[1:])
 
-    arg.update({'__api_meta': func._api_meta})
+        for k, v in meta.items():
+            if '&self.' in v:
+                v_ = v.replace('&self', 'owner')
+                meta[k] = eval(v_)
+
+    arg.update({'__api_meta': meta})
 
     key = hashlib.md5(pkl.dumps(arg, pkl.HIGHEST_PROTOCOL)).hexdigest()
 
@@ -103,7 +112,6 @@ class CacheManager:
     def disable_cache(cls):
         os.environ['USE_LAB_CACHE'] = 'false'
 
-    @property
     def is_using_cache(self):
         return os.getenv('USE_LAB_CACHE') == 'true'
 
@@ -259,7 +267,7 @@ class CacheManager:
             if func.__module__ == '__main__':
                 api_name = __main__.__file__ + ':' + func.__qualname__
 
-            func._api_meta = {'api_name': api_name}
+            func._api_meta = {'__api_name': api_name}
             func._api_meta.update(api_meta)
 
             if block_id is not None:
@@ -272,76 +280,84 @@ class CacheManager:
             @functools.wraps(func)
             def wrapper(*args, **kw):
 
-                # cache disabled
-                if not self.is_using_cache:
-                    return func(*args, **kw)
+                try:
 
-                key, api_arg = gen_cache_key(func, *args, **kw)
-                LOG.info('JPY_USER: {}, Request: {}, hash={}'.format(
-                    JPY_USER, api_arg, key))
+                    # cache disabled
+                    if self.is_using_cache() is False:
+                        return func(*args, **kw)
 
-                block_id = self.get_block_id(api_name)
-                tag = ';'.join([block_id] + self._global_tags)
-                latest_token = self.get_latest_token(tag)
-                token = self.read_cache_token(key)
+                    key, api_arg = gen_cache_key(func, *args, **kw)
+                    LOG.info('JPY_USER: {}, Request: {}, hash={}'.format(
+                        JPY_USER, api_arg, key))
 
-                # case 0: api not registered, hence cannot retrive latest token
-                if latest_token is None:
-                    LOG.info('{}: fail to find upstream status in metadb'
-                             .format(api_name))
-                    return func(*args, **kw)
+                    block_id = self.get_block_id(api_name)
+                    tag = ';'.join([block_id] + self._global_tags)
+                    latest_token = self.get_latest_token(tag)
+                    token = self.read_cache_token(key)
 
-                # case 1: cache not found
-                if token is None:
-                    new_value = func(*args, **kw)
-                    cache = Cache()
-                    cache.token = latest_token
-                    cache.hash, cache.value = serializer.gen_md5(
-                        new_value, value=True)
+                    # case 0: api not registered, hence cannot retrive
+                    # latest token
+                    if latest_token is None:
+                        LOG.info('{}: fail to find upstream status in metadb'
+                                 .format(api_name))
+                        return func(*args, **kw)
 
-                    LOG.info('{}: cache not found, return new value '
-                             'and write cache'.format(api_name))
-                    self.write_cache(key, cache)
-                    return new_value
-
-                # case 2: token outdated
-                if token != latest_token:
-
-                    # cache_value = self.read_cache_value(key)
-                    cache_meta = self.read_cache_meta(key)
-                    cache_hash = cache_meta['hash']
-                    new_value = func(*args, **kw)
-                    new_value_hash, new_value_bytes = serializer.gen_md5(
-                        new_value, value=True)
-
-                    # case 2.1: value unchanged, only update token
-                    # if self.compare_equal(cache_value, new_value):
-                    if cache_hash == new_value_hash:
-                        cache_meta['token'] = latest_token
-                        self.update_cache_meta(key, cache_meta)
-                        LOG.info('{}: value unchanged, '
-                                 'only update token'.format(api_name))
-                        return new_value
-
-                    # case 2.2: value changed, update cache
-                    else:
+                    # case 1: cache not found
+                    if token is None:
+                        new_value = func(*args, **kw)
                         cache = Cache()
                         cache.token = latest_token
-                        cache.value = new_value_bytes
-                        cache.hash = new_value_hash
+                        cache.hash, cache.value = serializer.gen_md5(
+                            new_value, value=True)
+
+                        LOG.info('{}: cache not found, return new value '
+                                 'and write cache'.format(api_name))
                         self.write_cache(key, cache)
-                        LOG.info('{}: cache overwritten'.format(api_name))
                         return new_value
 
-                # case 3: token validated
-                if token == latest_token:
-                    LOG.info('{}: cache hit'.format(api_name))
-                    try:
-                        return self.read_cache_value(key)
-                    except (CacheDataNotFound, CacheCorrupted):
-                        ret = func(*args, **kw)
-                        LOG.info(f'{api_name}: skip cache')
-                        return ret
+                    # case 2: token outdated
+                    if token != latest_token:
+
+                        # cache_value = self.read_cache_value(key)
+                        cache_meta = self.read_cache_meta(key)
+                        cache_hash = cache_meta['hash']
+                        new_value = func(*args, **kw)
+                        new_value_hash, new_value_bytes = serializer.gen_md5(
+                            new_value, value=True)
+
+                        # case 2.1: value unchanged, only update token
+                        # if self.compare_equal(cache_value, new_value):
+                        if cache_hash == new_value_hash:
+                            cache_meta['token'] = latest_token
+                            self.update_cache_meta(key, cache_meta)
+                            LOG.info('{}: value unchanged, '
+                                     'only update token'.format(api_name))
+                            return new_value
+
+                        # case 2.2: value changed, update cache
+                        else:
+                            cache = Cache()
+                            cache.token = latest_token
+                            cache.value = new_value_bytes
+                            cache.hash = new_value_hash
+                            self.write_cache(key, cache)
+                            LOG.info('{}: cache overwritten'.format(api_name))
+                            return new_value
+
+                    # case 3: token validated
+                    if token == latest_token:
+                        LOG.info('{}: cache hit'.format(api_name))
+                        try:
+                            return self.read_cache_value(key)
+                        except (CacheDataNotFound, CacheCorrupted):
+                            ret = func(*args, **kw)
+                            LOG.info(f'{api_name}: skip cache')
+                            return ret
+
+                except:
+                    LOG.error(f'{api_name}: cached call failed, '
+                              'fallback to original call', exc_info=True)
+                    return func(*args, **kw)
 
             return wrapper
         return _cache
