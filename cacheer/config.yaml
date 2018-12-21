@@ -8,6 +8,8 @@ lmdb-uri:
 
 map-size: 107374182400
 
+sqlite-uri:
+
 # one of 0, 1, 2, 3
 # choic whould be a tradeoff between compatibility and speed
 # with 0 being the most compatible

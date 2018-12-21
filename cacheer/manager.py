@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import time
 import inspect
 import functools
@@ -10,6 +11,7 @@ from pandas.io.pickle import pkl
 import hashlib
 import contextlib
 
+import traceback
 import logging
 
 from cacheer.store import SqliteCacheStore as Store, MongoMetaDB as MetaDB
@@ -28,6 +30,10 @@ class CacheDataNotFound(Exception):
 
 
 class CacheCorrupted(Exception):
+    pass
+
+
+class OriginalCallFailure(Exception):
     pass
 
 
@@ -284,7 +290,10 @@ class CacheManager:
 
                     # cache disabled
                     if self.is_using_cache() is False:
-                        return func(*args, **kw)
+                        try:
+                            return func(*args, **kw)
+                        except Exception as e:
+                            raise OriginalCallFailure from e
 
                     key, api_arg = gen_cache_key(func, *args, **kw)
                     LOG.info('JPY_USER: {}, Request: {}, hash={}'.format(
@@ -300,11 +309,20 @@ class CacheManager:
                     if latest_token is None:
                         LOG.info('{}: fail to find upstream status in metadb'
                                  .format(api_name))
-                        return func(*args, **kw)
+
+                        try:
+                            return func(*args, **kw)
+                        except:
+                            raise OriginalCallFailure
 
                     # case 1: cache not found
                     if token is None:
-                        new_value = func(*args, **kw)
+
+                        try:
+                            new_value = func(*args, **kw)
+                        except Exception as e:
+                            raise OriginalCallFailure from e
+
                         cache = Cache()
                         cache.token = latest_token
                         cache.hash, cache.value = serializer.gen_md5(
@@ -321,7 +339,12 @@ class CacheManager:
                         # cache_value = self.read_cache_value(key)
                         cache_meta = self.read_cache_meta(key)
                         cache_hash = cache_meta['hash']
-                        new_value = func(*args, **kw)
+
+                        try:
+                            new_value = func(*args, **kw)
+                        except Exception as e:
+                            raise OriginalCallFailure from e
+
                         new_value_hash, new_value_bytes = serializer.gen_md5(
                             new_value, value=True)
 
@@ -350,10 +373,16 @@ class CacheManager:
                         try:
                             return self.read_cache_value(key)
                         except (CacheDataNotFound, CacheCorrupted):
-                            ret = func(*args, **kw)
-                            LOG.info(f'{api_name}: skip cache')
-                            return ret
 
+                            try:
+                                ret = func(*args, **kw)
+                                LOG.info(f'{api_name}: skip cache')
+                                return ret
+                            except Exception as e:
+                                raise OriginalCallFailure from e
+
+                except OriginalCallFailure:
+                    raise
                 except:
                     LOG.error(f'{api_name}: cached call failed, '
                               'fallback to original call', exc_info=True)
@@ -364,4 +393,3 @@ class CacheManager:
 
 
 cache_manager = CacheManager(Store(), MetaDB())
-
