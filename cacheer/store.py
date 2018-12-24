@@ -420,6 +420,7 @@ class SqliteCacheStore(object):
         meta_key = self._cache_meta_prefix + key
         return self.read(meta_key)
 
+    @timeit
     def read_all_meta(self):
         res = self._store.read_latest(
             query={'key': {'$like': '__cache_meta%'}},
