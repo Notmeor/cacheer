@@ -103,8 +103,6 @@ class CacheManager:
         self._cache_store = cache_store
         self._metadb = metadb
 
-        self._global_tags = []
-
         self.enable_cache()
 
     def __call__(self, *args, **kw):
@@ -134,14 +132,44 @@ class CacheManager:
         # couterpart of no_cache
         raise NotImplementedError
 
-    def add_tag(self, block_id, api_name=None):
-        if api_name is None:  # a global tag
-            self._global_tags.append(block_id)
-        else:
+    def add_tag(self, api_name, block_id, scope='system'):
+        """
+        绑定标签
+
+        Parameters
+        ----------
+        block_id: `str`
+            数据块标签
+        api_name: `str`
+            接口名称, 默认不指定api，即将标签绑定至所有接口
+        scope: `str`
+            作用范围：
+                ‘user'作用于当前实例下的所有接口，‘system'作用于所有实例
+        """
+
+        if scope != 'system':
             raise NotImplementedError
+
+        tag = self._metadb.get_block_id(api_name)
+        if block_id not in tag:
+            self._metadb.add_api(api_name, tag + ';' + block_id)
+
+    def remove_tag(self, api_name, block_id):
+        tag = self._metadb.get_block_id(api_name)
+        if block_id in tag:
+            new_tag = tag.replace(f'{block_id}', '')
+            self._metadb.add_api(api_name, new_tag)
+
+    def list_tags(self, api_name):
+        tag = self._metadb.get_block_id(api_name)
+        return tag
 
     def register_api(self, api_name, block_id):
         self._metadb.add_api(api_name, block_id)
+
+    def get_latest_token(self, api_name):
+        block_id = self._metadb.get_block_id(api_name)
+        return self._metadb.get_latest_token(block_id)
 
     def _get_all_keys(self):
         # FIXME: only valid with SqliteCacheStore
@@ -155,7 +183,6 @@ class CacheManager:
 
         # write cache meta
         cache_meta = self.read_cache_meta()
-        print(f'cache_meta:{cache_meta}')
 
         has_value = cache.hash in [v['hash'] for v in cache_meta.values()]
 
@@ -245,12 +272,6 @@ class CacheManager:
             {class_name}_{class_signature}_{method_name}_{arguments}
         """
 
-    def get_latest_token(self, block_id):
-        return self._metadb.get_latest_token(block_id)
-
-    def get_block_id(self, api_name):
-        return self._metadb.get_block_id(api_name)
-
     def cache(self, block_id=BASE_BLOCK_ID, api_meta={}):
         def _cache(func):
 
@@ -299,9 +320,7 @@ class CacheManager:
                     LOG.info('JPY_USER: {}, Request: {}, hash={}'.format(
                         JPY_USER, api_arg, key))
 
-                    block_id = self.get_block_id(api_name)
-                    tag = ';'.join([block_id] + self._global_tags)
-                    latest_token = self.get_latest_token(tag)
+                    latest_token = self.get_latest_token(api_name)
                     token = self.read_cache_token(key)
 
                     # case 0: api not registered, hence cannot retrive
@@ -312,8 +331,8 @@ class CacheManager:
 
                         try:
                             return func(*args, **kw)
-                        except:
-                            raise OriginalCallFailure
+                        except Exception as e:
+                            raise OriginalCallFailure from e
 
                     # case 1: cache not found
                     if token is None:

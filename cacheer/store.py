@@ -141,10 +141,17 @@ class MongoMetaDB(MetaDB):
         with self._open_mongo(self._api_map_coll) as coll:
             coll.update_one(
                 filter={'api_name': api_name},
-                update={'$set': {'api_name': api_name,
-                                 'block_id': block_id}},
+                update={'$set': {'block_id': block_id}},
                 upsert=True
             )
+
+            with self._open_mongo(self._update_coll) as up_coll:
+                if up_coll.find_one({'block_id': block_id}) is None:
+                    up_coll.update_one(
+                        filter={'block_id': api_name},
+                        update={'$set': {'dt': datetime.datetime.now()}},
+                        upsert=True
+                    )
 
             self.load_api_map(coll)
 
@@ -157,7 +164,9 @@ class MongoMetaDB(MetaDB):
         self._api_map = {doc['api_name']: doc for doc in docs}
 
     def get_block_id(self, api_id):
-        return self._api_map[api_id]['block_id']
+        api_tag = self._api_map[api_id]['block_id']
+        glob_tag = self._api_map['*']['block_id']
+        return api_tag + ';' + glob_tag
 
     def _split_block_id(self, block_id):
         return [i for i in block_id.split(';') if i != '']
@@ -423,17 +432,3 @@ class SqliteCacheStore(object):
     def delete_meta(self, key):
         meta_key = self._cache_meta_prefix + key
         self.delete(meta_key)
-
-
-
-
-def _fm1(doc):
-    if not doc:
-        return 'TRUE'
-    s = str(doc)
-    formatted = s[2:-1].replace(
-        "': ", ' = ').replace(
-        ", '", ',').replace(
-        "= {'$like =", 'like').replace(
-        '}', '')
-    return formatted
