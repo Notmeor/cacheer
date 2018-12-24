@@ -167,7 +167,6 @@ class Picklizer3(Serializer):
         return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    @timeit
     def deserialize(cls, b):
         obj = pickle.loads(b)
         if isinstance(obj, pd.DataFrame):
