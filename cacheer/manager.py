@@ -147,6 +147,9 @@ class CacheManager:
                 ‘user'作用于当前实例下的所有接口，‘system'作用于所有实例
         """
 
+        if callable(api_name):
+            api_name = api_name._api_meta['__api_name']
+
         if scope != 'system':
             raise NotImplementedError
 
@@ -155,12 +158,18 @@ class CacheManager:
             self._metadb.add_api(api_name, tag + ';' + block_id)
 
     def remove_tag(self, api_name, block_id):
+        if callable(api_name):
+            api_name = api_name._api_meta['__api_name']
+
         tag = self._metadb.get_block_id(api_name)
         if block_id in tag:
             new_tag = tag.replace(f'{block_id}', '')
             self._metadb.add_api(api_name, new_tag)
 
     def list_tags(self, api_name):
+        if callable(api_name):
+            api_name = api_name._api_meta['__api_name']
+
         tag = self._metadb.get_block_id(api_name)
         return tag
 
@@ -400,7 +409,7 @@ class CacheManager:
                             except Exception as e:
                                 raise OriginalCallFailure from e
 
-                except OriginalCallFailure:
+                except OriginalCallFailure:diff
                     raise
                 except:
                     LOG.error(f'{api_name}: cached call failed, '
