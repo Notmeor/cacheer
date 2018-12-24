@@ -138,6 +138,7 @@ class MongoMetaDB(MetaDB):
         client.close()
 
     def add_api(self, api_name, block_id):
+
         with self._open_mongo(self._api_map_coll) as coll:
             coll.update_one(
                 filter={'api_name': api_name},
@@ -146,12 +147,14 @@ class MongoMetaDB(MetaDB):
             )
 
             with self._open_mongo(self._update_coll) as up_coll:
-                if up_coll.find_one({'block_id': block_id}) is None:
-                    up_coll.update_one(
-                        filter={'block_id': api_name},
-                        update={'$set': {'dt': datetime.datetime.now()}},
-                        upsert=True
-                    )
+                sub_block_ids = self._split_block_id(block_id)
+                for sub_id in sub_block_ids:
+                    if up_coll.find_one({'block_id': sub_id}) is None:
+                        up_coll.update_one(
+                            filter={'block_id': sub_id},
+                            update={'$set': {'dt': datetime.datetime.now()}},
+                            upsert=True
+                        )
 
             self.load_api_map(coll)
 
