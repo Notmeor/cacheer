@@ -166,6 +166,8 @@ class MongoMetaDB(MetaDB):
     def get_block_id(self, api_id):
         api_tag = self._api_map[api_id]['block_id']
         glob_tag = self._api_map['*']['block_id']
+        if api_id == '*':
+            return glob_tag
         return api_tag + ';' + glob_tag
 
     def _split_block_id(self, block_id):
