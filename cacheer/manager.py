@@ -409,7 +409,7 @@ class CacheManager:
                             except Exception as e:
                                 raise OriginalCallFailure from e
 
-                except OriginalCallFailure:diff
+                except OriginalCallFailure:
                     raise
                 except:
                     LOG.error(f'{api_name}: cached call failed, '
