@@ -419,10 +419,9 @@ class SqliteCacheStore(object):
         b_value = res[0]['value']
 
         if isinstance(b_value, int):  # splited
-            return self._read_split_blob(key, b_value)
+            b_value = self._read_split_blob(key, b_value)
 
-        if res:
-            return serializer.deserialize(b_value)
+        return serializer.deserialize(b_value)
 
     @timeit
     def write(self, key, value):
@@ -447,7 +446,7 @@ class SqliteCacheStore(object):
         sub_keys = [f'{key}_{i}' for i in range(number)]
 
         def _get_sub(k):
-            res = self._store.read({'key': key}, limit=1)
+            res = self._store.read({'key': k}, limit=1)
             return res[0]['value']
 
         blob = b''.join([_get_sub(k) for k in sub_keys])
