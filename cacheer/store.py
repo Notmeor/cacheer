@@ -413,6 +413,9 @@ class SqliteCacheStore(object):
         res = self._store.read({'key': key}, limit=1)
         assert len(res) <= 1
 
+        if len(res) == 0:
+            return None
+
         b_value = res[0]['value']
 
         if isinstance(b_value, int):  # splited
