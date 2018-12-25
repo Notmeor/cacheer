@@ -275,6 +275,9 @@ class CacheManager:
     def clear_expired(self):
         pass
 
+    def _remove_corrupted_cache(self, key):
+        self._cache_store.delete_meta(key)
+
     def _parse_key_as_params(self, key):
         """
         cache naming
@@ -410,6 +413,7 @@ class CacheManager:
                                 raise OriginalCallFailure from e
 
                 except OriginalCallFailure:
+                    self._remove_corrupted_cache(key)
                     raise
                 except:
                     LOG.error(f'{api_name}: cached call failed, '
