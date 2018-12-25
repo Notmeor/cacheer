@@ -15,6 +15,8 @@ import logging
 import multiprocessing
 import threading
 
+import math
+
 from cacheer.serializer import serializer
 from cacheer.utils import conf, timeit
 
@@ -244,6 +246,9 @@ class SqliteStore(object):
     # TODO: use sqlalchemy
 
     def __init__(self, db_name, table_name, fields):
+
+        self._max_length = 1000000000
+
         self.table_name = table_name
         self.db_name = db_name
 
@@ -308,7 +313,6 @@ class SqliteStore(object):
             cursor.execute(statement, list(doc.values()))
             self._conn.commit()
         except sqlite3.OperationalError:
-            print('重建连接')
             self._conns.pop(os.getpid())
             self.assure_table(self.table_name)
             self.write(doc)
@@ -408,13 +412,43 @@ class SqliteCacheStore(object):
     def read(self, key):
         res = self._store.read({'key': key}, limit=1)
         assert len(res) <= 1
+
+        b_value = res[0]['value']
+
+        if isinstance(b_value, int):  # splited
+            return self._read_split_blob(key, b_value)
+
         if res:
-            return serializer.deserialize(res[0]['value'])
+            return serializer.deserialize(b_value)
 
     @timeit
     def write(self, key, value):
         b_value = serializer.serialize(value)
-        self._store.write({'key': key, 'value': b_value})
+        value_len = len(b_value)
+        if value_len > self._store._max_length:
+            self._split_blob_and_save(value, value_len, key)
+        else:
+            self._store.write({'key': key, 'value': b_value})
+
+    def _split_blob_and_save(self, blob, length, key):
+        number = math.ceil(length / self._store._max_length)
+        step = math.ceil(length / number)
+        for idx, i in enumerate(range(0, length, step)):
+            sub = blob[i:i+step]
+            sub_key = f'{key}_{idx}'
+            self._store.write({'key': sub_key, 'value': sub})
+
+        self._store.write({'key': key, 'value': number})
+
+    def _read_split_blob(self, key, number):
+        sub_keys = [f'{key}_{i}' for i in range(number)]
+
+        def _get_sub(k):
+            res = self._store.read({'key': key}, limit=1)
+            return res[0]['value']
+
+        blob = b''.join([_get_sub(k) for k in sub_keys])
+        return blob
 
     def delete(self, key):
         self._store.delete({'key': key})
