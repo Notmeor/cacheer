@@ -321,7 +321,6 @@ class CacheManager:
             def wrapper(*args, **kw):
 
                 try:
-                    key, api_arg = gen_cache_key(func, *args, **kw)
 
                     # cache disabled
                     if self.is_using_cache() is False:
@@ -330,6 +329,7 @@ class CacheManager:
                         except Exception as e:
                             raise OriginalCallFailure from e
 
+                    key, api_arg = gen_cache_key(func, *args, **kw)
                     LOG.info('JPY_USER: {}, Request: {}, hash={}'.format(
                         JPY_USER, api_arg, key))
 
@@ -414,7 +414,7 @@ class CacheManager:
                                 raise OriginalCallFailure from e
 
                 except OriginalCallFailure:
-                    self._remove_corrupted_cache(key)
+                    # self._remove_corrupted_cache(key)
                     raise
                 except:
                     LOG.error(f'{api_name}: cached call failed, '
