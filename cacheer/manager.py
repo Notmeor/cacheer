@@ -104,6 +104,8 @@ class CacheManager:
         self._cache_store = cache_store
         self._metadb = metadb
 
+        self._mark_as_outdated = False
+
         self.enable_cache()
 
     def __call__(self, *args, **kw):
@@ -128,6 +130,12 @@ class CacheManager:
         yield None
         if _use_cache:
             self.enable_cache()
+
+    @contextlib.contextmanager
+    def outdate(self):
+        self._mark_as_outdated = True
+        yield None
+        self._mark_as_outdated = False
 
     def use_cache(self):
         # couterpart of no_cache
@@ -320,14 +328,14 @@ class CacheManager:
             @functools.wraps(func)
             def wrapper(*args, **kw):
 
-                try:
+                # cache disabled
+                if self.is_using_cache() is False:
+                    try:
+                        return func(*args, **kw)
+                    except:
+                        raise
 
-                    # cache disabled
-                    if self.is_using_cache() is False:
-                        try:
-                            return func(*args, **kw)
-                        except Exception as e:
-                            raise OriginalCallFailure from e
+                try:
 
                     key, api_arg = gen_cache_key(func, *args, **kw)
                     LOG.info('JPY_USER: {}, Request: {}, hash={}'.format(
@@ -366,7 +374,7 @@ class CacheManager:
                         return new_value
 
                     # case 2: token outdated
-                    if token != latest_token:
+                    if token != latest_token or self._mark_as_outdated:
 
                         # cache_value = self.read_cache_value(key)
                         cache_meta = self.read_cache_meta(key)
