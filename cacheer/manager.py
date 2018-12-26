@@ -37,6 +37,7 @@ class OriginalCallFailure(Exception):
     pass
 
 
+@timeit
 def gen_cache_key(func, *args, **kw):
 
     # func has yet to get its __self__ attr
@@ -320,6 +321,7 @@ class CacheManager:
             def wrapper(*args, **kw):
 
                 try:
+                    key, api_arg = gen_cache_key(func, *args, **kw)
 
                     # cache disabled
                     if self.is_using_cache() is False:
@@ -328,7 +330,6 @@ class CacheManager:
                         except Exception as e:
                             raise OriginalCallFailure from e
 
-                    key, api_arg = gen_cache_key(func, *args, **kw)
                     LOG.info('JPY_USER: {}, Request: {}, hash={}'.format(
                         JPY_USER, api_arg, key))
 
