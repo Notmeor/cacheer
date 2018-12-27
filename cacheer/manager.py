@@ -353,7 +353,8 @@ class CacheManager:
                         try:
                             return func(*args, **kw)
                         except Exception as e:
-                            raise OriginalCallFailure from e
+                            # raise OriginalCallFailure from e
+                            raise
 
                     # case 1: cache not found
                     if token is None:
@@ -361,7 +362,8 @@ class CacheManager:
                         try:
                             new_value = func(*args, **kw)
                         except Exception as e:
-                            raise OriginalCallFailure from e
+                            # raise OriginalCallFailure from e
+                            raise
 
                         cache = Cache()
                         cache.token = latest_token
@@ -383,7 +385,8 @@ class CacheManager:
                         try:
                             new_value = func(*args, **kw)
                         except Exception as e:
-                            raise OriginalCallFailure from e
+                            # raise OriginalCallFailure from e
+                            raise
 
                         new_value_hash, new_value_bytes = serializer.gen_md5(
                             new_value, value=True)
@@ -419,16 +422,24 @@ class CacheManager:
                                 LOG.info(f'{api_name}: skip cache')
                                 return ret
                             except Exception as e:
-                                raise OriginalCallFailure from e
+                                # raise OriginalCallFailure from e
+                                raise
 
-                except OriginalCallFailure:
-                    # self._remove_corrupted_cache(key)
-                    raise
                 except:
-                    LOG.error(f'{api_name}: cached call failed, '
-                              'fallback to original call', exc_info=True)
+                    # TODO: catch origial call failure and re-throw
+                    # the original exception
                     self._remove_corrupted_cache(key)
-                    return func(*args, **kw)
+                    LOG.error(f'{api_name}: call failed')
+                    raise
+
+#                except OriginalCallFailure:
+#                    # self._remove_corrupted_cache(key)
+#                    raise
+#                except:
+#                    LOG.error(f'{api_name}: cached call failed, '
+#                              'fallback to original call', exc_info=True)
+#                    self._remove_corrupted_cache(key)
+#                    return func(*args, **kw)
 
             return wrapper
         return _cache
