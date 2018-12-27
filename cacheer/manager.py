@@ -356,8 +356,7 @@ class CacheManager:
                         try:
                             return func(*args, **kw)
                         except Exception as e:
-                            # raise OriginalCallFailure from e
-                            raise
+                            raise OriginalCallFailure(e)
 
                     # case 1: cache not found
                     if token is None:
@@ -365,8 +364,6 @@ class CacheManager:
                         try:
                             new_value = func(*args, **kw)
                         except Exception as e:
-                            # raise OriginalCallFailure from e
-                            # raise
                             raise OriginalCallFailure(e)
 
                         cache = Cache()
@@ -389,8 +386,7 @@ class CacheManager:
                         try:
                             new_value = func(*args, **kw)
                         except Exception as e:
-                            # raise OriginalCallFailure from e
-                            raise
+                            raise OriginalCallFailure(e)
 
                         new_value_hash, new_value_bytes = serializer.gen_md5(
                             new_value, value=True)
@@ -426,10 +422,10 @@ class CacheManager:
                                 LOG.info(f'{api_name}: skip cache')
                                 return ret
                             except Exception as e:
-                                # raise OriginalCallFailure from e
-                                raise
+                                raise OriginalCallFailure(e)
 
                 except OriginalCallFailure as e:
+                    LOG.info(f'{api_name}: original call failed')
                     raise e.original_exc
 
                 except:
