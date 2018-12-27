@@ -34,7 +34,10 @@ class CacheCorrupted(Exception):
 
 
 class OriginalCallFailure(Exception):
-    pass
+
+    def __init__(self, e, *args, **kw):
+        self.original_exc = e
+        super().__init__(*args, **kw)
 
 
 @timeit
@@ -363,7 +366,8 @@ class CacheManager:
                             new_value = func(*args, **kw)
                         except Exception as e:
                             # raise OriginalCallFailure from e
-                            raise
+                            # raise
+                            raise OriginalCallFailure(e)
 
                         cache = Cache()
                         cache.token = latest_token
@@ -425,21 +429,14 @@ class CacheManager:
                                 # raise OriginalCallFailure from e
                                 raise
 
-                except:
-                    # TODO: catch origial call failure and re-throw
-                    # the original exception
-                    self._remove_corrupted_cache(key)
-                    LOG.error(f'{api_name}: call failed')
-                    raise
+                except OriginalCallFailure as e:
+                    raise e.original_exc
 
-#                except OriginalCallFailure:
-#                    # self._remove_corrupted_cache(key)
-#                    raise
-#                except:
-#                    LOG.error(f'{api_name}: cached call failed, '
-#                              'fallback to original call', exc_info=True)
-#                    self._remove_corrupted_cache(key)
-#                    return func(*args, **kw)
+                except:
+                    LOG.error(f'{api_name}: cached call failed, '
+                              'fallback to original call', exc_info=True)
+                    self._remove_corrupted_cache(key)
+                    return func(*args, **kw)
 
             return wrapper
         return _cache
