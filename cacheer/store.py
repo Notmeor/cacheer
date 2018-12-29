@@ -262,10 +262,10 @@ class SqliteStore(object):
     @property
     def _conn(self):
 
-        pid = os.getpid()
+        conn_id = (os.getpid(), threading.get_ident())
 
-        if pid not in self._conns:
-            self._conns[pid] = conn = sqlite3.connect(
+        if conn_id not in self._conns:
+            self._conns[conn_id] = conn = sqlite3.connect(
                 self.db_name + '.db')
 
             def dict_factory(cursor, row):
@@ -276,7 +276,7 @@ class SqliteStore(object):
 
             conn.row_factory = dict_factory
 
-        return self._conns[pid]
+        return self._conns[conn_id]
 
     def close(self):
         self._conn.commit()
