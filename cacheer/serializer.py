@@ -28,7 +28,7 @@ class Serializer:
         raise NotImplementedError
 
     @classmethod
-    @timeit
+    
     def gen_md5(cls, b, value=False):
         bytes_ = b if isinstance(b, bytes) else cls.serialize(b)
         md5 = hashlib.md5(bytes_).hexdigest()
@@ -44,14 +44,14 @@ def _count_elements(df):
 class Picklizer(Serializer):
 
     @staticmethod
-    @timeit
+    
     def serialize(obj):
         if isinstance(obj, bytes):
             return obj
         return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
 
     @staticmethod
-    @timeit
+    
     def deserialize(b):
         return pickle.loads(b)
 
@@ -63,7 +63,7 @@ class Picklizer1(Serializer):
     """
 
     @staticmethod
-    @timeit
+    
     def serialize(obj):
         if isinstance(obj, bytes):
             return obj
@@ -73,7 +73,7 @@ class Picklizer1(Serializer):
         return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
 
     @staticmethod
-    @timeit
+    
     def deserialize(b):
         try:
             obj = pickle.loads(b)
@@ -89,17 +89,17 @@ class Picklizer2(Serializer):
     """
 
     @staticmethod
-    @timeit
+    
     def to_table(df):
         return pa.Table.from_pandas(df)
 
     @staticmethod
-    @timeit
+    
     def to_dataframe(table):
         return table.to_pandas()
 
     @classmethod
-    @timeit
+    
     def serialize(cls, obj):
         if isinstance(obj, bytes):
             return obj
@@ -108,7 +108,7 @@ class Picklizer2(Serializer):
         return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    @timeit
+    
     def deserialize(cls, b):
         obj = pickle.loads(b)
         if isinstance(obj, pa.Table):
@@ -123,7 +123,7 @@ class Picklizer3(Serializer):
     """
 
     @staticmethod
-    @timeit
+    
     def _is_categorized(df):
         for d in df.dtypes:
             if d.name == 'category':
@@ -131,7 +131,7 @@ class Picklizer3(Serializer):
         return False
 
     @classmethod
-    @timeit
+    
     def categorize(cls, df, copy=False):
 
         # TODO: use with metadata
@@ -146,7 +146,7 @@ class Picklizer3(Serializer):
         return df
 
     @staticmethod
-    @timeit
+    
     def decategorize(df):
         """
         experimental
@@ -158,7 +158,7 @@ class Picklizer3(Serializer):
         return df
 
     @classmethod
-    @timeit
+    
     def serialize(cls, obj):
         if isinstance(obj, bytes):
             return obj

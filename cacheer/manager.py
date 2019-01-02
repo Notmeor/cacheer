@@ -40,7 +40,7 @@ class OriginalCallFailure(Exception):
         super().__init__(*args, **kw)
 
 
-@timeit
+
 def gen_cache_key(func, *args, **kw):
 
     # func has yet to get its __self__ attr
@@ -197,7 +197,7 @@ class CacheManager:
         res = self._cache_store._store.read_distinct(['key'])
         return [i['key'] for i in res]
 
-    @timeit
+    
     def write_cache(self, key, cache):
 
         # TODO: remove expired cache value only when limit is about to be hit
@@ -225,7 +225,7 @@ class CacheManager:
 
         self.clear_expired()
 
-    @timeit
+    
     def read_cache_meta(self, key=None):
         if key is None:
             return self._cache_store.read_all_meta()
@@ -243,7 +243,7 @@ class CacheManager:
             return None
         return meta['hash']
 
-    @timeit
+    
     def read_cache_value(self, key):
         meta = self.read_cache_meta(key)
         cache_key = meta['hash']
@@ -283,7 +283,7 @@ class CacheManager:
         self._cache_store.delete_meta(key)
         # TODO: remove expired
 
-    @timeit
+    
     def clear_expired(self):
         pass
 

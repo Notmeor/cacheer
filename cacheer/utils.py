@@ -28,19 +28,19 @@ def timeit(func):
     return wrapper
 
 
-@timeit
+
 def serialize(obj):
     if isinstance(obj, bytes):
         return obj
     return pkl.dumps(obj, pkl.HIGHEST_PROTOCOL)
 
 
-@timeit
+
 def deserialize(b):
     return pkl.loads(b)
 
 
-@timeit
+
 def deserialize_exp(b):
     try:
         return deserialize(b)
@@ -62,7 +62,7 @@ def logit(log, before=None, after=None):
     return decorator
 
 
-@timeit
+
 def gen_md5(b, value=False):
     bytes_ = b if isinstance(b, bytes) else serialize(b)
     md5 = hashlib.md5(bytes_).hexdigest()

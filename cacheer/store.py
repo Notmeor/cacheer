@@ -77,7 +77,7 @@ class LmdbStore:
         env.close()
         return value_hash
 
-    @timeit
+    
     def read(self, key):
         with self._env.begin() as txn:
             value = txn.get(key.encode())
@@ -408,7 +408,7 @@ class SqliteCacheStore(object):
             self.db_path, 'lab_cache', ['key', 'value'])
         self._cache_meta_prefix = '__cache_meta_'
 
-    @timeit
+    
     def read(self, key):
         res = self._store.read({'key': key}, limit=1)
         assert len(res) <= 1
@@ -423,7 +423,7 @@ class SqliteCacheStore(object):
 
         return serializer.deserialize(b_value)
 
-    @timeit
+    
     def write(self, key, value):
         b_value = serializer.serialize(value)
         value_len = len(b_value)
@@ -459,7 +459,7 @@ class SqliteCacheStore(object):
         meta_key = self._cache_meta_prefix + key
         return self.read(meta_key)
 
-    @timeit
+    
     def read_all_meta(self):
         res = self._store.read_latest(
             query={'key': {'$like': '__cache_meta%'}},
