@@ -539,7 +539,6 @@ class SqliteCacheStore(object):
             self.db_path, 'lab_cache', ['key', 'value'])
         self._cache_meta_prefix = '__cache_meta_'
 
-    @timeit
     def read(self, key):
         res = self._store.read({'key': key}, limit=1)
         assert len(res) <= 1
@@ -582,7 +581,6 @@ class SqliteCacheStore(object):
         blob = b''.join([_get_sub(k) for k in sub_keys])
         return blob
 
-    @timeit
     def has_key(self, key):
         cursor = self._store._conn.cursor()
         ret = cursor.execute(f"SELECT key FROM lab_cache WHERE key = '{key}'"
