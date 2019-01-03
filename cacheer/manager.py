@@ -192,12 +192,15 @@ class CacheManager:
         block_id = self._metadb.get_block_id(api_name)
         return self._metadb.get_latest_token(block_id)
 
+    @timeit
     def _get_all_keys(self):
         # FIXME: only valid with SqliteCacheStore
         res = self._cache_store._store.read_distinct(['key'])
         return [i['key'] for i in res]
 
-    
+    def _has_key(self, key):
+        return self._cache_store.has_key(key)
+
     def write_cache(self, key, cache):
 
         # TODO: remove expired cache value only when limit is about to be hit
@@ -214,7 +217,8 @@ class CacheManager:
         }
         self._cache_store.write_meta(key, meta)
 
-        value_stored = cache.hash in self._get_all_keys()
+        # value_stored = cache.hash in self._get_all_keys()
+        value_stored = self._has_key(cache.hash)
 
         if has_value or value_stored:
             LOG.info('{}: cache value already exists or is being created'
@@ -225,7 +229,6 @@ class CacheManager:
 
         self.clear_expired()
 
-    
     def read_cache_meta(self, key=None):
         if key is None:
             return self._cache_store.read_all_meta()
@@ -243,9 +246,9 @@ class CacheManager:
             return None
         return meta['hash']
 
-    
-    def read_cache_value(self, key):
-        meta = self.read_cache_meta(key)
+    def read_cache_value(self, key, meta=None):
+        if meta is None:
+            meta = self.read_cache_meta(key)
         cache_key = meta['hash']
 
         # cache value might be still in writing
@@ -253,7 +256,8 @@ class CacheManager:
         # when another sqlite connection starts, but the cache metadata might
         # somehow oddly persist (bug?)
 
-        if cache_key not in self._get_all_keys():
+        # if cache_key not in self._get_all_keys():
+        if not self._has_key(cache_key):
             LOG.warning(f'{key}: fail to retrieve cache value')
             if 'failure_time' not in meta:
                 meta['failure_time'] = time.time()
@@ -283,7 +287,6 @@ class CacheManager:
         self._cache_store.delete_meta(key)
         # TODO: remove expired
 
-    
     def clear_expired(self):
         pass
 
@@ -345,7 +348,9 @@ class CacheManager:
                         JPY_USER, api_arg, key))
 
                     latest_token = self.get_latest_token(api_name)
-                    token = self.read_cache_token(key)
+
+                    cache_meta = self.read_cache_meta(key) or {}
+                    token = cache_meta.get('token')
 
                     # case 0: api not registered, hence cannot retrive
                     # latest token
@@ -380,7 +385,6 @@ class CacheManager:
                     if token != latest_token or self._mark_as_outdated:
 
                         # cache_value = self.read_cache_value(key)
-                        cache_meta = self.read_cache_meta(key)
                         cache_hash = cache_meta['hash']
 
                         try:
@@ -414,7 +418,7 @@ class CacheManager:
                     if token == latest_token:
                         LOG.info('{}: cache hit'.format(api_name))
                         try:
-                            return self.read_cache_value(key)
+                            return self.read_cache_value(key, meta=cache_meta)
                         except (CacheDataNotFound, CacheCorrupted):
 
                             try:
