@@ -435,7 +435,8 @@ class CacheManager:
                 except OriginalCallFailure as e:
                     LOG.info(f'{api_name}: original call failed')
                     raise e.original_exc
-
+                except KeyboardInterrupt:
+                    raise
                 except:
                     LOG.error(f'{api_name}: cached call failed, '
                               'fallback to original call', exc_info=True)
