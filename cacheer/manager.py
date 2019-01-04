@@ -11,14 +11,13 @@ from pandas.io.pickle import pkl
 import hashlib
 import contextlib
 
-import traceback
 import logging
 
 from cacheer.store import SqliteCacheStore as Store, MongoMetaDB as MetaDB
 from cacheer.serializer import serializer
 from cacheer.utils import timeit, is_defined_in_shell
 
-LOG = logging.getLogger(__file__)
+LOG = logging.getLogger('cacheer.manager')
 
 BASE_BLOCK_ID = '${api-fullname}'
 
@@ -38,7 +37,6 @@ class OriginalCallFailure(Exception):
     def __init__(self, e, *args, **kw):
         self.original_exc = e
         super().__init__(*args, **kw)
-
 
 
 def gen_cache_key(func, *args, **kw):
