@@ -15,6 +15,8 @@ import pandas as pd
 from pandas.io.pickle import pkl
 from pandas.io import packers
 
+import logging
+LOG = logging.getLogger('cacheer.manager')
 
 def timeit(func):
     @functools.wraps(func)
@@ -22,8 +24,11 @@ def timeit(func):
         t0_ = time.time()
         ret = func(*args, **kwargs)
         func_name = func.__module__ + '.' + func.__qualname__
+        delta_ =  time.time() - t0_
+        if delta_ > 5:
+            LOG.error(f'{func_name}: {delta_}')
         print("'%s' run in %.6f secs" % (
-            func_name, time.time() - t0_))
+            func_name, delta_))
         return ret
     return wrapper
 
