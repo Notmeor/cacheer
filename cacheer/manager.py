@@ -438,7 +438,11 @@ class CacheManager:
                 except:
                     LOG.error(f'{api_name}: cached call failed, '
                               'fallback to original call', exc_info=True)
-                    self._remove_corrupted_cache(key)
+                    try:
+                        self._remove_corrupted_cache(key)
+                    except:
+                        LOG.error(
+                            'Remove corrupted cache failed', exc_info=True)
                     return func(*args, **kw)
 
             return wrapper
