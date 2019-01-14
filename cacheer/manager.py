@@ -194,7 +194,6 @@ class CacheManager:
         block_id = self._metadb.get_block_id(api_name)
         return self._metadb.get_latest_token(block_id)
 
-    @timeit
     def _get_all_keys(self):
         # FIXME: only valid with SqliteCacheStore
         res = self._cache_store._store.read_distinct(['key'])

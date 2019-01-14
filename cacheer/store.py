@@ -225,7 +225,6 @@ class MongoMetaDB(MetaDB):
         self._api_map = {}
         self.load_api_map()
 
-    @timeit
     def read_update_status(self):
         with self._open_mongo(self._update_coll) as coll:
             rec = coll.find({}, {'_id': False})
@@ -494,7 +493,6 @@ class SqliteStore(object):
 
         return ret
 
-    @timeit
     def read_distinct(self, fields):
         with contextlib.closing(self._conn.cursor()) as cursor:
             ret = cursor.execute("SELECT DISTINCT {} FROM {}".format(
@@ -555,7 +553,7 @@ class SqliteCacheStore(object):
             self.db_path, 'lab_cache', ['key', 'value'])
         self._store.add_index('key')
         self._cache_meta_prefix = '__cache_meta_'
-    @timeit
+
     def read(self, key):
         res = self._store.read({'key': key}, limit=1)
         assert len(res) <= 1
@@ -597,7 +595,7 @@ class SqliteCacheStore(object):
 
         blob = b''.join([_get_sub(k) for k in sub_keys])
         return blob
-    @timeit
+
     def has_key(self, key):
         with contextlib.closing(self._store._conn.cursor()) as cursor:
             ret = cursor.execute(f"SELECT key FROM lab_cache WHERE key"
