@@ -138,18 +138,6 @@ class MongoMetaDB(MetaDB):
         self._api_map = {}
         self.load_api_map()
 
-<<<<<<< HEAD
-    def read_update_status(self):
-=======
-    @timeit
-    def read_update_status_(self):
->>>>>>> dev
-        with self._open_mongo(self._update_coll) as coll:
-            rec = coll.find({}, {'_id': False})
-            self._update_status = {i['block_id']: i['dt'] for i in rec}
-        return self._update_status
-
-    @timeit
     def read_update_status(self):
         update_stats = {}
         for uri in self._metadb_uris:
