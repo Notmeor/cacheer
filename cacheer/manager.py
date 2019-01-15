@@ -356,6 +356,7 @@ class CacheManager:
 
                     # case 0: api not registered, hence cannot retrive
                     # latest token
+                    # TODO: to be removed
                     if latest_token is None:
                         LOG.info('{}: fail to find upstream status in metadb'
                                  .format(api_name))
@@ -384,7 +385,7 @@ class CacheManager:
                         return new_value
 
                     # case 2: token outdated
-                    if token != latest_token or self._mark_as_outdated:
+                    if token < latest_token or self._mark_as_outdated:
 
                         # cache_value = self.read_cache_value(key)
                         cache_hash = cache_meta['hash']
@@ -417,7 +418,7 @@ class CacheManager:
                             return new_value
 
                     # case 3: token validated
-                    if token == latest_token:
+                    if token >= latest_token:
                         LOG.info('{}: cache hit'.format(api_name))
                         try:
                             return self.read_cache_value(key, meta=cache_meta)
