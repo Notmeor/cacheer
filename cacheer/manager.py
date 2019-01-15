@@ -142,7 +142,7 @@ class CacheManager:
         # couterpart of no_cache
         raise NotImplementedError
     
-    def notify_source_upate(self, block_id, meta, **kw):
+    def notify_source_update(self, block_id, meta, **kw):
         self._metadb.update(block_id, meta, **kw)
 
     def add_tag(self, api_name, block_id, scope='system'):
