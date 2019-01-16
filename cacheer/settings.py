@@ -17,10 +17,13 @@ def setup_logging(settings):
         logging.basicConfig(level=logging.INFO)
 
 
-def load_config(path=None):
+def load_config(path):
     if path is None:
-        dirname = os.path.dirname(__file__)
-        path = os.path.join(dirname, 'config.yaml')
+        return {}
+    
+    if not os.path.exists(path):
+        return {}
+
     with open(path, 'r') as f:
         conf = yaml.load(f)
     return conf
