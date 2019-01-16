@@ -193,8 +193,8 @@ class CacheManager:
         try:
             self._metadb.add_api(api_name, block_id)
         except:
-            LOG.info('Register api failed, this is ok if you haven"t been'
-                     ' granted to do so')
+            LOG.info("Register api failed, this is ok if you haven't been"
+                     " granted to do so")
 
     def get_latest_token(self, api_name):
         block_id = self._metadb.get_block_id(api_name)
