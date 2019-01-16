@@ -67,7 +67,6 @@ def logit(log, before=None, after=None):
     return decorator
 
 
-
 def gen_md5(b, value=False):
     bytes_ = b if isinstance(b, bytes) else serialize(b)
     md5 = hashlib.md5(bytes_).hexdigest()
@@ -93,44 +92,3 @@ def get_api_name(func):
             return api_name
         api_name = __main__.__file__ + ':' + func.__qualname__
     return api_name
-
-
-def setup_logging(default_path=None,
-                  default_level=logging.INFO,
-                  env_key='LOG_CFG'):
-    """
-    Setup logging configuration
-    """
-    if default_path:
-        path = default_path
-    else:
-        path = os.path.join(os.path.dirname(__file__), 'config.yaml')
-    value = os.getenv(env_key, None)
-    if value:
-        path = value
-    if os.path.exists(path):
-        with open(path, 'rt') as f:
-            config = yaml.safe_load(f.read())['logging']
-        logging.config.dictConfig(config)
-    else:
-        logging.basicConfig(level=default_level)
-
-
-def load_config(path=None):
-    if path is None:
-        dirname = os.path.dirname(__file__)
-        path = os.path.join(dirname, 'config.yaml')
-    with open(path, 'r') as f:
-        conf = yaml.load(f)
-    return conf
-
-
-conf = load_config(path=os.getenv('CACHEER_CONFIG'))
-setup_logging(default_path=os.getenv('CACHEER_CONFIG'))
-
-
-# This is a fix for logging in multiple processes
-# Source: https://github.com/jruere/multiprocessing-logging.git
-from cacheer import multiprocessing_logging
-multiprocessing_logging.install_mp_handler()
-

@@ -16,7 +16,8 @@ import pyarrow as pa
 import pandas as pd
 import numpy as np
 
-from cacheer.utils import timeit, conf
+from cacheer import settings
+from cacheer.utils import timeit
 
 
 class Serializer:
@@ -174,7 +175,7 @@ class Picklizer3(Serializer):
         return obj
 
 
-serializer_type = conf.get('serializer-type', 3)
+serializer_type = settings.conf.get('serializer-type', 3)
 serializer = {
     0: Picklizer,
     1: Picklizer1,

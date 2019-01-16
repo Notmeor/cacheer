@@ -18,7 +18,8 @@ import threading
 import math
 
 from cacheer.serializer import serializer
-from cacheer.utils import conf, timeit
+from cacheer.settings import conf
+from cacheer.utils import timeit
 
 LOG = logging.getLogger(__file__)
 

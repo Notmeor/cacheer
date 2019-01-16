@@ -16,6 +16,9 @@ import logging
 from cacheer.store import SqliteCacheStore as Store, MongoMetaDB as MetaDB
 from cacheer.serializer import serializer
 from cacheer.utils import timeit, is_defined_in_shell
+from cacheer.settings import setup_logging, conf
+
+setup_logging(conf['logging'])
 
 LOG = logging.getLogger('cacheer.manager')
 
