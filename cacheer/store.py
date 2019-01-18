@@ -134,10 +134,10 @@ class MongoMetaDB(MetaDB):
         self._update_interval = 10
         self._update_time = time.time()
         self._update_status = {}
-        self.read_update_status()
+        self._update_status_first_loading = False
 
         self._api_map = {}
-        self.load_api_map()
+        self._api_map_first_loading = False
 
     def read_update_status(self):
         update_stats = {}
@@ -147,16 +147,20 @@ class MongoMetaDB(MetaDB):
                 docs = coll.find({}, {'_id': False})
                 for doc in docs:
                     block_id, dt = doc['block_id'], doc['dt']
-                    if (block_id not in update_stats or
-                        update_stats[block_id] < dt):
+                    _should_update = (block_id not in update_stats or
+                                      update_stats[block_id] < dt)
+                    if _should_update:
                         update_stats[block_id] = dt
         self._update_status = update_stats
 
     def _refresh_update_status(self):
         now = time.time()
-        if now - self._update_time >= self._update_interval:
-            self._update_time = now
+        _should_update = ((not self._update_status_first_loading) or
+                          (now - self._update_time >= self._update_interval))
+        if _should_update:
             self.read_update_status()
+            self._update_status_first_loading = True
+            self._update_time = now
 
     @contextlib.contextmanager
     def _open_mongo(self, ns):
@@ -186,6 +190,10 @@ class MongoMetaDB(MetaDB):
         self._api_map = {doc['api_name']: doc for doc in docs}
 
     def get_block_id(self, api_id):
+        if not self._api_map_first_loading:
+            self.load_api_map()
+            self._api_map_first_loading = True
+
         api_tag = self._api_map[api_id]['block_id']
         glob_tag = self._api_map['*']['block_id']
         if api_id == '*':
@@ -276,12 +284,17 @@ class SqliteStore(object):
         assert 'id' not in [f.lower() for f in fields]
         self.fields = fields
 
+        self._indexed_fields = []
         self._conns = {}
 
-        self.assure_table(table_name)
+        self._db_initialized = False
 
     @property
     def _conn(self):
+
+        if not self._db_initialized:
+            self._db_initialized = True
+            self.assure_table()
 
         conn_id = (os.getpid(), threading.get_ident())
 
@@ -303,7 +316,10 @@ class SqliteStore(object):
         self._conn.commit()
         self._conn.close()
 
-    def assure_table(self, name):
+    def assure_table(self, name=None):
+        if name is None:
+            name = self.table_name
+
         with contextlib.closing(self._conn.cursor()) as cursor:
             try:
                 cursor.execute("SELECT * FROM {} LIMIT 1".format(name))
@@ -312,6 +328,8 @@ class SqliteStore(object):
                 fields_str = 'ID INTEGER PRIMARY KEY,' + fields_str
                 cursor.execute("CREATE TABLE {} ({})".format(name, fields_str))
                 self._conn.commit()
+
+        self.assure_index()
 
     def reset_table(self, name):
         with contextlib.closing(self._conn.cursor()) as cursor:
@@ -322,7 +340,19 @@ class SqliteStore(object):
 
         self.delete({})
 
-    def add_index(self, key):
+    def add_index(self, field):
+        if field not in self._indexed_fields:
+            self._indexed_fields.append(field)
+
+    def assure_index(self, fields=None):
+        if fields is not None:
+            for field in fields:
+                self.add_index(field)
+
+        for key in self._indexed_fields:
+            self._add_index(key)
+
+    def _add_index(self, key):
         with contextlib.closing(self._conn.cursor()) as cursor:
             name = f'{key}_'
             stmt = (f"SELECT * FROM sqlite_master WHERE type ="
@@ -346,8 +376,9 @@ class SqliteStore(object):
                 cursor.execute(statement, list(doc.values()))
                 self._conn.commit()
         except sqlite3.OperationalError:
+            # reset conn if underlying sqlite gets deleted
             self._conns.pop(os.getpid())
-            self.assure_table(self.table_name)
+            self.assure_table()
             self.write(doc)
 
     def write_many(self, docs):

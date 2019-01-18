@@ -110,6 +110,8 @@ class CacheManager:
 
         self._mark_as_outdated = False
 
+        self._auto_register_api = False
+
         self.enable_cache()
 
     def __call__(self, *args, **kw):
@@ -144,7 +146,10 @@ class CacheManager:
     def use_cache(self):
         # couterpart of no_cache
         raise NotImplementedError
-    
+
+    def allow_auto_register_api(self):
+        self._auto_register_api = True
+
     def notify_source_update(self, block_id, meta, **kw):
         self._metadb.update(block_id, meta, **kw)
 
@@ -190,8 +195,14 @@ class CacheManager:
         return tag
 
     def register_api(self, api_name, block_id):
+
+        block_id_ = block_id
+        if BASE_BLOCK_ID not in block_id:
+            block_id_ = BASE_BLOCK_ID + ';' + block_id
+        block_id_ = block_id_.replace(BASE_BLOCK_ID, api_name)
+
         try:
-            self._metadb.add_api(api_name, block_id)
+            self._metadb.add_api(api_name, block_id_)
         except:
             LOG.info("Register api failed, this is ok if you haven't been"
                      " granted to do so")
@@ -331,12 +342,8 @@ class CacheManager:
             func._api_meta = {'__api_name': api_name}
             func._api_meta.update(api_meta)
 
-            if block_id is not None:
-                block_id_ = block_id
-                if BASE_BLOCK_ID not in block_id:
-                    block_id_ = BASE_BLOCK_ID + ';' + block_id
-                block_id_ = block_id_.replace(BASE_BLOCK_ID, api_name)
-                self.register_api(api_name, block_id_)
+            if self._auto_register_api:
+                self.register_api(api_name, block_id)
 
             @functools.wraps(func)
             def wrapper(*args, **kw):
