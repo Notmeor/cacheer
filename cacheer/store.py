@@ -21,7 +21,7 @@ from cacheer.serializer import serializer
 from cacheer.settings import conf
 from cacheer.utils import timeit
 
-LOG = logging.getLogger(__file__)
+LOG = logging.getLogger('cacheer.manager')
 
 
 # TODO: try apache-ignite/apache-arrow
@@ -290,13 +290,17 @@ class SqliteStore(object):
         self._db_initialized = False
 
     @property
+    def _conn_id(self):
+        return (os.getpid(), threading.get_ident())
+
+    @property
     def _conn(self):
 
         if not self._db_initialized:
             self._db_initialized = True
             self.assure_table()
 
-        conn_id = (os.getpid(), threading.get_ident())
+        conn_id = self._conn_id
 
         if conn_id not in self._conns:
             self._conns[conn_id] = conn = sqlite3.connect(
@@ -375,9 +379,10 @@ class SqliteStore(object):
             with contextlib.closing(self._conn.cursor()) as cursor:
                 cursor.execute(statement, list(doc.values()))
                 self._conn.commit()
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
             # reset conn if underlying sqlite gets deleted
-            self._conns.pop(os.getpid())
+            LOG.warning(str(e) + '. Would reset connection')
+            self._conns.pop(self._conn_id)
             self.assure_table()
             self.write(doc)
 
