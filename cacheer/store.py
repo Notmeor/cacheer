@@ -344,6 +344,17 @@ class SqliteStore(object):
 
         self.delete({})
 
+    def reset_connection(self, exc=None):
+            # reset conn if underlying sqlite gets deleted
+            LOG.warning(str(exc) + '. Would reset connection')
+            try:
+                LOG.error('Try closing busy conn')
+                self._conn.close()
+            except:
+                LOG.error('Close busy conn failed', exc_info=True)
+            self._conns.pop(self._conn_id)
+            self.assure_table()
+
     def add_index(self, field):
         if field not in self._indexed_fields:
             self._indexed_fields.append(field)
@@ -375,21 +386,17 @@ class SqliteStore(object):
             ','.join(doc.keys()),
             ','.join(['?'] * len(doc))
         )
-        try:
+
+        def _write():
             with contextlib.closing(self._conn.cursor()) as cursor:
                 cursor.execute(statement, list(doc.values()))
                 self._conn.commit()
+
+        try:
+            _write()
         except sqlite3.OperationalError as e:
-            # reset conn if underlying sqlite gets deleted
-            LOG.warning(str(e) + '. Would reset connection')
-            try:
-                LOG.critical('Try closing busy conn')
-                self._conn.close()
-            except:
-                LOG.error('Close busy conn failed', exc_info=True)
-            self._conns.pop(self._conn_id)
-            self.assure_table()
-            self.write(doc)
+            self.reset_connection(exc=e)
+            _write()
 
     def write_many(self, docs):
         list(map(self.write, docs))
@@ -405,10 +412,16 @@ class SqliteStore(object):
         if limit:
             statement += " ORDER BY ID DESC LIMIT {}".format(limit)
 
-        with contextlib.closing(self._conn.cursor()) as cursor:
-            ret = cursor.execute(statement).fetchall()
+        def _read():
+            with contextlib.closing(self._conn.cursor()) as cursor:
+                ret = cursor.execute(statement).fetchall()
+            return ret
 
-        return ret
+        try:
+            return _read()
+        except sqlite3.OperationalError as e:
+            self.reset_connection(exc=e)
+            return _read()
 
     def read_latest(self, query, by):
         query_str = self._format_condition(query)
