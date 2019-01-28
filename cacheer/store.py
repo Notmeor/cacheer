@@ -196,6 +196,7 @@ class MongoMetaDB(MetaDB):
 
         api_tag = self._api_map[api_id]['block_id']
         glob_tag = self._api_map['*']['block_id']
+
         if api_id == '*':
             return glob_tag
         return api_tag + ';' + glob_tag
@@ -211,6 +212,11 @@ class MongoMetaDB(MetaDB):
         token = datetime.datetime(1970, 1, 1)
         for sub_id in sub_block_ids:
             dt = self._update_status.get(sub_id, None)
+
+            # dt=0 would virtually disable cache
+            if dt == 0:
+                return None
+
             if dt is not None:
                 if token < dt:
                     token = dt
