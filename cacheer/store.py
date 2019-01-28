@@ -383,7 +383,7 @@ class SqliteStore(object):
             # reset conn if underlying sqlite gets deleted
             LOG.warning(str(e) + '. Would reset connection')
             try:
-                LOG.error('Try closing busy conn')
+                LOG.critical('Try closing busy conn')
                 self._conn.close()
             except:
                 LOG.error('Close busy conn failed', exc_info=True)
