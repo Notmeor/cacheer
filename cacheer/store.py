@@ -199,7 +199,7 @@ class MongoMetaDB(MetaDB):
 
         if api_id == '*':
             return glob_tag
-        return api_tag + ';' + glob_tag
+        return glob_tag + ';' + api_tag
 
     def _split_block_id(self, block_id):
         return [i for i in block_id.split(';') if i != '']
