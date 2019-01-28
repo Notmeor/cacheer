@@ -382,6 +382,11 @@ class SqliteStore(object):
         except sqlite3.OperationalError as e:
             # reset conn if underlying sqlite gets deleted
             LOG.warning(str(e) + '. Would reset connection')
+            try:
+                LOG.error('Try closing busy conn')
+                self._conn.close()
+            except:
+                LOG.error('Close busy conn failed', exc_info=True)
             self._conns.pop(self._conn_id)
             self.assure_table()
             self.write(doc)
