@@ -4,6 +4,7 @@ import os
 import datetime
 import time
 
+import collections
 import contextlib
 import functools
 import lmdb
