@@ -573,9 +573,8 @@ class SqliteCacheStore(object):
         return self.read(meta_key)
 
     def read_all_meta(self):
-        res = self._store.read_latest(
-            query={'key': {'$like': '__cache_meta%'}},
-            by='key')
+        res = self._store.read(
+            query={'key': {'$like': '__cache_meta%'}})
         meta = {i['key']: serializer.deserialize(i['value']) for i in res}
         return meta
 
