@@ -326,6 +326,7 @@ class SqliteStore(object):
         self._conn.commit()
         self._conn.close()
 
+    @timeit
     def assure_table(self, name=None):
         if name is None:
             name = self.table_name
@@ -373,6 +374,7 @@ class SqliteStore(object):
         for key in self._indexed_fields:
             self._add_index(key)
 
+    @timeit
     def _add_index(self, key):
         with contextlib.closing(self._conn.cursor()) as cursor:
             name = f'{key}_'
@@ -392,7 +394,7 @@ class SqliteStore(object):
             ','.join(doc.keys()),
             ','.join(['?'] * len(doc))
         )
-
+        @timeit
         def _write():
             with contextlib.closing(self._conn.cursor()) as cursor:
                 cursor.execute(statement, list(doc.values()))
@@ -418,6 +420,7 @@ class SqliteStore(object):
         if limit:
             statement += " ORDER BY ID DESC LIMIT {}".format(limit)
 
+        @timeit
         def _read():
             with contextlib.closing(self._conn.cursor()) as cursor:
                 ret = cursor.execute(statement).fetchall()
@@ -429,6 +432,7 @@ class SqliteStore(object):
             self.reset_connection(exc=e)
             return _read()
 
+    @timeit
     def read_latest(self, query, by):
         query_str = self._format_condition(query)
         statement = (
@@ -439,7 +443,7 @@ class SqliteStore(object):
             con=query_str,
             table=self.table_name,
             by=by)
-
+        print(statement)
         with contextlib.closing(self._conn.cursor()) as cursor:
             ret = cursor.execute(statement).fetchall()
 

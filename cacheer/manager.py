@@ -12,6 +12,7 @@ import hashlib
 import contextlib
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 from cacheer.store import SqliteCacheStore as Store, MongoMetaDB as MetaDB
 from cacheer.serializer import serializer
@@ -114,8 +115,20 @@ class CacheManager:
 
         self.enable_cache()
 
+        self._allow_background_workers = True
+        self._background_workers = ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix='CacheWriter')
+
     def __call__(self, *args, **kw):
         return self.cache(*args, **kw)
+    
+    def run_in_background(self, task, *args, **kw):
+        if self._allow_background_workers:
+            LOG.warning(f'Run `{task.__name__}` in background')
+            self._background_workers.submit(
+                task, *args, **kw)
+        else:
+            task(*args, **kw)
 
     @classmethod
     def enable_cache(cls):
@@ -386,14 +399,18 @@ class CacheManager:
                         except Exception as e:
                             raise OriginalCallFailure(e)
 
-                        cache = Cache()
-                        cache.token = latest_token
-                        cache.hash, cache.value = serializer.gen_md5(
-                            new_value, value=True)
-
                         LOG.info('{}: cache not found, return new value '
                                  'and write cache'.format(api_name))
-                        self.write_cache(key, cache)
+
+                        def _write_new_cache():
+                            cache = Cache()
+                            cache.token = latest_token
+                            cache.hash, cache.value = serializer.gen_md5(
+                                new_value, value=True)
+                            self.write_cache(key, cache)
+                        
+                        self.run_in_background(_write_new_cache)
+
                         return new_value
 
                     # case 2: token outdated
@@ -421,11 +438,16 @@ class CacheManager:
 
                         # case 2.2: value changed, update cache
                         else:
-                            cache = Cache()
-                            cache.token = latest_token
-                            cache.value = new_value_bytes
-                            cache.hash = new_value_hash
-                            self.write_cache(key, cache)
+
+                            def _overwrite_cache():
+                                cache = Cache()
+                                cache.token = latest_token
+                                cache.value = new_value_bytes
+                                cache.hash = new_value_hash
+                                self.write_cache(key, cache)
+                            
+                            self.run_in_background(_overwrite_cache)
+
                             LOG.info('{}: cache overwritten'.format(api_name))
                             return new_value
 
