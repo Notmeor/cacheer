@@ -395,7 +395,7 @@ class SqliteStore(object):
         @timeit
         def _write():
             with self._conn:
-                    self._conn.execute(statement, list(doc.values()))
+                    self._conn.execute(statement, tuple(doc.values()))
 
         try:
             _write()
@@ -454,10 +454,10 @@ class SqliteStore(object):
 
     @staticmethod
     def _format_assignment(doc):
-        s = str(doc)
-        formatted = s[2:-1].replace(
-            "': ", '=').replace(", '", ',')
-        return formatted
+        r = []
+        for k in doc:
+            r.append(f'{k}=?')
+        return ','.join(r)
 
     @staticmethod
     def _format_condition(doc):
@@ -483,7 +483,7 @@ class SqliteStore(object):
         )
 
         with self._conn:
-            self._conn.execute(statement)
+            self._conn.execute(statement, tuple(document.values()))
 
     def delete(self, query):
         query_str = self._format_condition(query)
