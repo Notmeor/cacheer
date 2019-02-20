@@ -290,7 +290,7 @@ class SqliteStore(object):
         assert 'id' not in [f.lower() for f in fields]
         self.fields = fields
 
-        self._indexed_fields = []
+        self._indexed_fields = collections.OrderedDict()
         self._conns = {}
 
         self._db_initialized = False
@@ -362,20 +362,15 @@ class SqliteStore(object):
             self._conns.pop(self._conn_id)
             self.assure_table()
 
-    def add_index(self, field):
-        if field not in self._indexed_fields:
-            self._indexed_fields.append(field)
+    def add_index(self, field, unique=False):
+        self._indexed_fields[field] = {'unique': unique}
 
-    def assure_index(self, fields=None):
-        if fields is not None:
-            for field in fields:
-                self.add_index(field)
-
-        for key in self._indexed_fields:
-            self._add_index(key)
+    def assure_index(self):
+        for key, meta in self._indexed_fields.items():
+            self._add_index(key, unique=meta['unique'])
 
     @timeit
-    def _add_index(self, key):
+    def _add_index(self, key, unique):
         with self._conn:
             name = f'{key}_'
             stmt = (f"SELECT * FROM sqlite_master WHERE type ="
@@ -383,8 +378,10 @@ class SqliteStore(object):
                     f" and name = '{name}'")
 
             if self._conn.execute(stmt).fetchone() is None:
+                _unique = 'UNIQUE' if unique else '' 
                 self._conn.execute(
-                    f"CREATE INDEX {name} ON {self.table_name}({key})")
+                    f"CREATE {_unique} INDEX {name} ON "
+                    f"{self.table_name}({key})")
 
     def write(self, doc):
 
@@ -393,10 +390,11 @@ class SqliteStore(object):
             ','.join(doc.keys()),
             ','.join(['?'] * len(doc))
         )
+
         @timeit
         def _write():
             with self._conn:
-                self._conn.execute(statement, list(doc.values()))
+                    self._conn.execute(statement, list(doc.values()))
 
         try:
             _write()
@@ -503,7 +501,7 @@ class SqliteCacheStore(object):
         self.db_path = conf['sqlite-uri']
         self._store = SqliteStore(
             self.db_path, 'lab_cache', ['key', 'value'])
-        self._store.add_index('key')
+        self._store.add_index('key', unique=True)
         self._cache_meta_prefix = '__cache_meta_'
 
     def read(self, key):
@@ -520,13 +518,24 @@ class SqliteCacheStore(object):
 
         return serializer.deserialize(b_value)
 
+    def _write_or_update(self, key, value):
+        try:
+            self._store.write({'key': key, 'value': value})
+        except sqlite3.IntegrityError as e:
+            if str(e).startswith('UNIQUE constraint failed'):
+                LOG.warning(f'Update already existing `{key}`')
+                self._store.update(query={'key': key},
+                                   document={'value': value})
+            else:
+                raise
+
     def write(self, key, value):
         b_value = serializer.serialize(value)
         value_len = len(b_value)
         if value_len > self._store._max_length:
             self._split_blob_and_save(value, value_len, key)
         else:
-            self._store.write({'key': key, 'value': b_value})
+            self._write_or_update(key, b_value)
 
     def _split_blob_and_save(self, blob, length, key):
         number = math.ceil(length / self._store._max_length)
@@ -534,9 +543,9 @@ class SqliteCacheStore(object):
         for idx, i in enumerate(range(0, length, step)):
             sub = blob[i:i+step]
             sub_key = f'{key}_{idx}'
-            self._store.write({'key': sub_key, 'value': sub})
+            self._write_or_update(sub_key, sub)
 
-        self._store.write({'key': key, 'value': number})
+        self._write_or_update(key, number)
 
     def _read_split_blob(self, key, number):
         sub_keys = [f'{key}_{i}' for i in range(number)]
@@ -549,9 +558,10 @@ class SqliteCacheStore(object):
         return blob
 
     def has_key(self, key):
-        with self._conn:
-            ret = self._conn.execute(f"SELECT key FROM lab_cache WHERE key"
-                                 f" = '{key}' LIMIT 1").fetchone()
+        with self._store._conn:
+            ret = self._store._conn.execute(
+                f"SELECT key FROM lab_cache WHERE key"
+                f" = '{key}' LIMIT 1").fetchone()
         return ret is not None
 
     def delete(self, key):
