@@ -331,23 +331,23 @@ class SqliteStore(object):
         if name is None:
             name = self.table_name
 
-        with contextlib.closing(self._conn.cursor()) as cursor:
+        with self._conn:
             try:
-                cursor.execute("SELECT * FROM {} LIMIT 1".format(name))
+                self._conn.execute("SELECT * FROM {} LIMIT 1".format(name))
             except sqlite3.OperationalError:
                 fields_str = ','.join(self.fields)
                 fields_str = 'ID INTEGER PRIMARY KEY,' + fields_str
-                cursor.execute("CREATE TABLE {} ({})".format(name, fields_str))
-                self._conn.commit()
+                self._conn.execute(
+                    "CREATE TABLE {} ({})".format(name, fields_str))
 
         self.assure_index()
 
     def reset_table(self, name):
-        with contextlib.closing(self._conn.cursor()) as cursor:
+        with self._conn:
             fields_str = ','.join(self.fields)
             fields_str = 'ID INTEGER PRIMARY KEY,' + fields_str
-            cursor.execute("CREATE TABLE {} ({})".format(name, fields_str))
-            self._conn.commit()
+            self._conn.execute(
+                "CREATE TABLE {} ({})".format(name, fields_str))
 
         self.delete({})
 
@@ -376,16 +376,15 @@ class SqliteStore(object):
 
     @timeit
     def _add_index(self, key):
-        with contextlib.closing(self._conn.cursor()) as cursor:
+        with self._conn:
             name = f'{key}_'
             stmt = (f"SELECT * FROM sqlite_master WHERE type ="
                     f" 'index' and tbl_name = '{self.table_name}'"
                     f" and name = '{name}'")
 
-            if cursor.execute(stmt).fetchone() is None:
-                cursor.execute(
+            if self._conn.execute(stmt).fetchone() is None:
+                self._conn.execute(
                     f"CREATE INDEX {name} ON {self.table_name}({key})")
-                self._conn.commit()
 
     def write(self, doc):
 
@@ -396,9 +395,8 @@ class SqliteStore(object):
         )
         @timeit
         def _write():
-            with contextlib.closing(self._conn.cursor()) as cursor:
-                cursor.execute(statement, list(doc.values()))
-                self._conn.commit()
+            with self._conn:
+                self._conn.execute(statement, list(doc.values()))
 
         try:
             _write()
@@ -422,8 +420,8 @@ class SqliteStore(object):
 
         @timeit
         def _read():
-            with contextlib.closing(self._conn.cursor()) as cursor:
-                ret = cursor.execute(statement).fetchall()
+            with self._conn:
+                ret = self._conn.execute(statement).fetchall()
             return ret
 
         try:
@@ -444,14 +442,14 @@ class SqliteStore(object):
             table=self.table_name,
             by=by)
         print(statement)
-        with contextlib.closing(self._conn.cursor()) as cursor:
-            ret = cursor.execute(statement).fetchall()
+        with self._conn:
+            ret = self._conn.execute(statement).fetchall()
 
         return ret
 
     def read_distinct(self, fields):
-        with contextlib.closing(self._conn.cursor()) as cursor:
-            ret = cursor.execute("SELECT DISTINCT {} FROM {}".format(
+        with self._conn:
+            ret = self._conn.execute("SELECT DISTINCT {} FROM {}".format(
                 ','.join(fields), self.table_name)).fetchall()
         return ret
 
@@ -485,20 +483,18 @@ class SqliteStore(object):
             query_str
         )
 
-        with contextlib.closing(self._conn.cursor()) as cursor:
-            cursor.execute(statement)
-            self._conn.commit()
+        with self._conn:
+            self._conn.execute(statement)
 
     def delete(self, query):
         query_str = self._format_condition(query)
         if query_str:
             query_str = f'WHERE {query_str} '
-        with contextlib.closing(self._conn.cursor()) as cursor:
-            cursor.execute("DELETE FROM {} {}".format(
+        with self._conn:
+            self._conn.execute("DELETE FROM {} {}".format(
                 self.table_name,
                 query_str
             ))
-            self._conn.commit()
 
 
 class SqliteCacheStore(object):
@@ -553,8 +549,8 @@ class SqliteCacheStore(object):
         return blob
 
     def has_key(self, key):
-        with contextlib.closing(self._store._conn.cursor()) as cursor:
-            ret = cursor.execute(f"SELECT key FROM lab_cache WHERE key"
+        with self._conn:
+            ret = self._conn.execute(f"SELECT key FROM lab_cache WHERE key"
                                  f" = '{key}' LIMIT 1").fetchone()
         return ret is not None
 
