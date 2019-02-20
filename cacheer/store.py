@@ -498,8 +498,8 @@ class SqliteStore(object):
 
 class SqliteCacheStore(object):
 
-    def __init__(self):
-        self.db_path = conf['sqlite-uri']
+    def __init__(self, db_path=None):
+        self.db_path = db_path or conf['sqlite-uri']
         self._store = SqliteStore(
             self.db_path, 'lab_cache', ['key', 'value'])
         self._store.add_index('key', unique=True)
