@@ -124,7 +124,7 @@ class CacheManager:
     
     def run_in_background(self, task, *args, **kw):
         if self._allow_background_workers:
-            LOG.warning(f'Run `{task.__name__}` in background')
+            LOG.info(f'Run `{task.__name__}` in background')
             self._background_workers.submit(
                 task, *args, **kw)
         else:
