@@ -4,6 +4,7 @@ import os
 import datetime
 import time
 
+import collections
 import contextlib
 import functools
 import lmdb
@@ -290,7 +291,7 @@ class SqliteStore(object):
         assert 'id' not in [f.lower() for f in fields]
         self.fields = fields
 
-        self._indexed_fields = []
+        self._indexed_fields = collections.OrderedDict()
         self._conns = {}
 
         self._db_initialized = False
@@ -330,23 +331,23 @@ class SqliteStore(object):
         if name is None:
             name = self.table_name
 
-        with contextlib.closing(self._conn.cursor()) as cursor:
+        with self._conn:
             try:
-                cursor.execute("SELECT * FROM {} LIMIT 1".format(name))
+                self._conn.execute("SELECT * FROM {} LIMIT 1".format(name))
             except sqlite3.OperationalError:
                 fields_str = ','.join(self.fields)
                 fields_str = 'ID INTEGER PRIMARY KEY,' + fields_str
-                cursor.execute("CREATE TABLE {} ({})".format(name, fields_str))
-                self._conn.commit()
+                self._conn.execute(
+                    "CREATE TABLE {} ({})".format(name, fields_str))
 
         self.assure_index()
 
     def reset_table(self, name):
-        with contextlib.closing(self._conn.cursor()) as cursor:
+        with self._conn:
             fields_str = ','.join(self.fields)
             fields_str = 'ID INTEGER PRIMARY KEY,' + fields_str
-            cursor.execute("CREATE TABLE {} ({})".format(name, fields_str))
-            self._conn.commit()
+            self._conn.execute(
+                "CREATE TABLE {} ({})".format(name, fields_str))
 
         self.delete({})
 
@@ -361,29 +362,25 @@ class SqliteStore(object):
             self._conns.pop(self._conn_id)
             self.assure_table()
 
-    def add_index(self, field):
-        if field not in self._indexed_fields:
-            self._indexed_fields.append(field)
+    def add_index(self, field, unique=False):
+        self._indexed_fields[field] = {'unique': unique}
 
-    def assure_index(self, fields=None):
-        if fields is not None:
-            for field in fields:
-                self.add_index(field)
+    def assure_index(self):
+        for key, meta in self._indexed_fields.items():
+            self._add_index(key, unique=meta['unique'])
 
-        for key in self._indexed_fields:
-            self._add_index(key)
-
-    def _add_index(self, key):
-        with contextlib.closing(self._conn.cursor()) as cursor:
+    def _add_index(self, key, unique):
+        with self._conn:
             name = f'{key}_'
             stmt = (f"SELECT * FROM sqlite_master WHERE type ="
                     f" 'index' and tbl_name = '{self.table_name}'"
                     f" and name = '{name}'")
 
-            if cursor.execute(stmt).fetchone() is None:
-                cursor.execute(
-                    f"CREATE INDEX {name} ON {self.table_name}({key})")
-                self._conn.commit()
+            if self._conn.execute(stmt).fetchone() is None:
+                _unique = 'UNIQUE' if unique else '' 
+                self._conn.execute(
+                    f"CREATE {_unique} INDEX {name} ON "
+                    f"{self.table_name}({key})")
 
     def write(self, doc):
 
@@ -394,9 +391,8 @@ class SqliteStore(object):
         )
 
         def _write():
-            with contextlib.closing(self._conn.cursor()) as cursor:
-                cursor.execute(statement, list(doc.values()))
-                self._conn.commit()
+            with self._conn:
+                    self._conn.execute(statement, tuple(doc.values()))
 
         try:
             _write()
@@ -419,8 +415,8 @@ class SqliteStore(object):
             statement += " ORDER BY ID DESC LIMIT {}".format(limit)
 
         def _read():
-            with contextlib.closing(self._conn.cursor()) as cursor:
-                ret = cursor.execute(statement).fetchall()
+            with self._conn:
+                ret = self._conn.execute(statement).fetchall()
             return ret
 
         try:
@@ -439,24 +435,24 @@ class SqliteStore(object):
             con=query_str,
             table=self.table_name,
             by=by)
-
-        with contextlib.closing(self._conn.cursor()) as cursor:
-            ret = cursor.execute(statement).fetchall()
+        print(statement)
+        with self._conn:
+            ret = self._conn.execute(statement).fetchall()
 
         return ret
 
     def read_distinct(self, fields):
-        with contextlib.closing(self._conn.cursor()) as cursor:
-            ret = cursor.execute("SELECT DISTINCT {} FROM {}".format(
+        with self._conn:
+            ret = self._conn.execute("SELECT DISTINCT {} FROM {}".format(
                 ','.join(fields), self.table_name)).fetchall()
         return ret
 
     @staticmethod
     def _format_assignment(doc):
-        s = str(doc)
-        formatted = s[2:-1].replace(
-            "': ", '=').replace(", '", ',')
-        return formatted
+        r = []
+        for k in doc:
+            r.append(f'{k}=?')
+        return ','.join(r)
 
     @staticmethod
     def _format_condition(doc):
@@ -481,29 +477,27 @@ class SqliteStore(object):
             query_str
         )
 
-        with contextlib.closing(self._conn.cursor()) as cursor:
-            cursor.execute(statement)
-            self._conn.commit()
+        with self._conn:
+            self._conn.execute(statement, tuple(document.values()))
 
     def delete(self, query):
         query_str = self._format_condition(query)
         if query_str:
             query_str = f'WHERE {query_str} '
-        with contextlib.closing(self._conn.cursor()) as cursor:
-            cursor.execute("DELETE FROM {} {}".format(
+        with self._conn:
+            self._conn.execute("DELETE FROM {} {}".format(
                 self.table_name,
                 query_str
             ))
-            self._conn.commit()
 
 
 class SqliteCacheStore(object):
 
-    def __init__(self):
-        self.db_path = conf['sqlite-uri']
+    def __init__(self, db_path=None):
+        self.db_path = db_path or conf['sqlite-uri']
         self._store = SqliteStore(
             self.db_path, 'lab_cache', ['key', 'value'])
-        self._store.add_index('key')
+        self._store.add_index('key', unique=True)
         self._cache_meta_prefix = '__cache_meta_'
 
     def read(self, key):
@@ -520,13 +514,24 @@ class SqliteCacheStore(object):
 
         return serializer.deserialize(b_value)
 
+    def _write_or_update(self, key, value):
+        try:
+            self._store.write({'key': key, 'value': value})
+        except sqlite3.IntegrityError as e:
+            if str(e).startswith('UNIQUE constraint failed'):
+                LOG.warning(f'Update already existing `{key}`')
+                self._store.update(query={'key': key},
+                                   document={'value': value})
+            else:
+                raise
+
     def write(self, key, value):
         b_value = serializer.serialize(value)
         value_len = len(b_value)
         if value_len > self._store._max_length:
             self._split_blob_and_save(value, value_len, key)
         else:
-            self._store.write({'key': key, 'value': b_value})
+            self._write_or_update(key, b_value)
 
     def _split_blob_and_save(self, blob, length, key):
         number = math.ceil(length / self._store._max_length)
@@ -534,9 +539,9 @@ class SqliteCacheStore(object):
         for idx, i in enumerate(range(0, length, step)):
             sub = blob[i:i+step]
             sub_key = f'{key}_{idx}'
-            self._store.write({'key': sub_key, 'value': sub})
+            self._write_or_update(sub_key, sub)
 
-        self._store.write({'key': key, 'value': number})
+        self._write_or_update(key, number)
 
     def _read_split_blob(self, key, number):
         sub_keys = [f'{key}_{i}' for i in range(number)]
@@ -549,9 +554,10 @@ class SqliteCacheStore(object):
         return blob
 
     def has_key(self, key):
-        with contextlib.closing(self._store._conn.cursor()) as cursor:
-            ret = cursor.execute(f"SELECT key FROM lab_cache WHERE key"
-                                 f" = '{key}' LIMIT 1").fetchone()
+        with self._store._conn:
+            ret = self._store._conn.execute(
+                f"SELECT key FROM lab_cache WHERE key"
+                f" = '{key}' LIMIT 1").fetchone()
         return ret is not None
 
     def delete(self, key):
@@ -562,9 +568,8 @@ class SqliteCacheStore(object):
         return self.read(meta_key)
 
     def read_all_meta(self):
-        res = self._store.read_latest(
-            query={'key': {'$like': '__cache_meta%'}},
-            by='key')
+        res = self._store.read(
+            query={'key': {'$like': '__cache_meta%'}})
         meta = {i['key']: serializer.deserialize(i['value']) for i in res}
         return meta
 
