@@ -324,8 +324,8 @@ class SqliteStore(object):
         return self._conns[conn_id]
 
     def close(self):
-        self._conn.commit()
-        self._conn.close()
+        # self._conn.commit()
+        self._conns.clear()
 
     def assure_table(self, name=None):
         if name is None:
