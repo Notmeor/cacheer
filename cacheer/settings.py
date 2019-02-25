@@ -2,21 +2,6 @@ import os
 import logging
 import yaml
 
-def setup_logging(settings):
-    """
-    Setup logging configuration
-    """
-
-    try:
-        logging.config.dictConfig(settings)
-    except:
-        logging.basicConfig(level=logging.INFO)
-    
-    # This is a fix for logging in multiple processes
-    # Source: https://github.com/jruere/multiprocessing-logging.git
-    from cacheer import multiprocessing_logging
-    multiprocessing_logging.install_mp_handler()
-
 
 def load_config(path):
     if path is None:

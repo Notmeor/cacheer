@@ -92,3 +92,22 @@ def get_api_name(func):
             return api_name
         api_name = __main__.__file__ + ':' + func.__qualname__
     return api_name
+
+
+def get_mp_logger(settings, logger_name):
+
+    try:
+        logging.config.dictConfig(settings)
+    except:
+        logging.basicConfig(level=logging.INFO)
+    
+    # This is a fix for logging in multiple processes
+    # Source: https://github.com/jruere/multiprocessing-logging.git
+    # FIXME: use zmq.log
+    from cacheer import multiprocessing_logging
+    logger = logging.getLogger(logger_name)
+    multiprocessing_logging.install_mp_handler(logger)
+
+    logger = logging.getLogger(logger_name)
+
+    return logger

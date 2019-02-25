@@ -19,9 +19,7 @@ from cacheer.serializer import serializer
 from cacheer.utils import timeit, is_defined_in_shell
 from cacheer.settings import setup_logging, conf
 
-setup_logging(conf['logging'])
-
-LOG = logging.getLogger('cacheer.manager')
+LOG = get_mp_logger(conf['logging'], 'cacheer.manager')
 
 BASE_BLOCK_ID = '${api-fullname}'
 
