@@ -16,8 +16,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from cacheer.store import SqliteCacheStore as Store, MongoMetaDB as MetaDB
 from cacheer.serializer import serializer
-from cacheer.utils import timeit, is_defined_in_shell
-from cacheer.settings import setup_logging, conf
+from cacheer.utils import timeit, is_defined_in_shell, get_mp_logger
+from cacheer.settings import conf
 
 LOG = get_mp_logger(conf['logging'], 'cacheer.manager')
 
