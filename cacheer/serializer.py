@@ -29,7 +29,6 @@ class Serializer:
         raise NotImplementedError
 
     @classmethod
-    
     def gen_md5(cls, b, value=False):
         bytes_ = b if isinstance(b, bytes) else cls.serialize(b)
         md5 = hashlib.md5(bytes_).hexdigest()
@@ -45,14 +44,12 @@ def _count_elements(df):
 class Picklizer(Serializer):
 
     @staticmethod
-    
     def serialize(obj):
         if isinstance(obj, bytes):
             return obj
         return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
 
     @staticmethod
-    
     def deserialize(b):
         return pickle.loads(b)
 
@@ -64,7 +61,6 @@ class Picklizer1(Serializer):
     """
 
     @staticmethod
-    
     def serialize(obj):
         if isinstance(obj, bytes):
             return obj
@@ -74,7 +70,6 @@ class Picklizer1(Serializer):
         return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
 
     @staticmethod
-    
     def deserialize(b):
         try:
             obj = pickle.loads(b)
@@ -90,17 +85,14 @@ class Picklizer2(Serializer):
     """
 
     @staticmethod
-    
     def to_table(df):
         return pa.Table.from_pandas(df)
 
     @staticmethod
-    
     def to_dataframe(table):
         return table.to_pandas()
 
     @classmethod
-    
     def serialize(cls, obj):
         if isinstance(obj, bytes):
             return obj
@@ -109,7 +101,6 @@ class Picklizer2(Serializer):
         return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    
     def deserialize(cls, b):
         obj = pickle.loads(b)
         if isinstance(obj, pa.Table):
@@ -124,7 +115,6 @@ class Picklizer3(Serializer):
     """
 
     @staticmethod
-    
     def _is_categorized(df):
         for d in df.dtypes:
             if d.name == 'category':
@@ -132,12 +122,11 @@ class Picklizer3(Serializer):
         return False
 
     @classmethod
-    
     def categorize(cls, df, copy=False):
 
         # TODO: use with metadata
         if cls._is_categorized(df):
-            raise TypeError('Categorical are not supported by this serializer')
+            raise TypeError('pandas `category` is not supported by this serializer')
 
         df = df.copy() if copy else df
         # FIXME: multi column
@@ -147,7 +136,6 @@ class Picklizer3(Serializer):
         return df
 
     @staticmethod
-    
     def decategorize(df):
         """
         experimental
@@ -159,12 +147,14 @@ class Picklizer3(Serializer):
         return df
 
     @classmethod
-    
     def serialize(cls, obj):
         if isinstance(obj, bytes):
             return obj
-        if isinstance(obj, pd.DataFrame) and np.product(obj.shape) > 30000:
-            obj = cls.categorize(obj, copy=True)
+        try:
+            if isinstance(obj, pd.DataFrame) and np.product(obj.shape) > 30000:
+                obj = cls.categorize(obj, copy=True)
+        except TypeError:
+            pass
         return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
 
     @classmethod
