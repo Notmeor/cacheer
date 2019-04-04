@@ -112,6 +112,8 @@ class Picklizer3(Serializer):
     """
     Provide a quick path for serializing DataFrame using the conversion
     between `category` and `object` dtypes
+
+    Deprecated
     """
 
     @staticmethod
