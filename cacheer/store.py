@@ -7,7 +7,7 @@ import time
 import collections
 import contextlib
 import functools
-import lmdb
+
 import pymongo
 import sqlite3
 
@@ -28,8 +28,13 @@ LOG = logging.getLogger('cacheer.manager')
 # TODO: try apache-ignite/apache-arrow
 
 class LmdbStore:
+    """
+    Deprecated
+    """
 
     def __init__(self):
+
+        import lmdb
 
         self.db_path = db_path = conf['lmdb-uri']
         if not db_path:

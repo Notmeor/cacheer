@@ -33,17 +33,14 @@ def timeit(func):
     return wrapper
 
 
-
 def serialize(obj):
     if isinstance(obj, bytes):
         return obj
     return pkl.dumps(obj, pkl.HIGHEST_PROTOCOL)
 
 
-
 def deserialize(b):
     return pkl.loads(b)
-
 
 
 def deserialize_exp(b):

@@ -12,6 +12,5 @@ setup(
     install_requires=[
         'numpy>=1.16.0',
         'pyarrow>=0.11.1',
-        'lmdb>=0.94'
     ]
 )
