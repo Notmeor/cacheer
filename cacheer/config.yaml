@@ -10,10 +10,12 @@ map-size: 107374182400
 
 sqlite-uri: ''
 
-# one of 0, 1, 2, 3
-# choic whould be a tradeoff between compatibility and speed
-# with 0 being the most compatible
-serializer-type: 3
+# One of 0, 1, 2, 3
+# Choice whould be a tradeoff between compatibility and speed
+# with 0 being the most compatible;
+# Option other than 0 would take a quick path when serializing
+# pandas dataframes.
+serializer-type: 0
 
 
 logging:
@@ -51,11 +53,7 @@ logging:
             encoding: utf8
     
     loggers:
-        my_module:
-            level: ERROR
-            handlers: [console]
+        cacheer:
+            level: INFO
+            handlers: [info_file_handler]
             propagate: no
-    
-    root:
-        level: DEBUG
-        handlers: [console, info_file_handler, error_file_handler]
